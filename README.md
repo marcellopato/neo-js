@@ -35,6 +35,22 @@ graph TD
 
 ## 💻 Instalação & Setup (macOS & Linux)
 
+### 🚀 Atalho de Uma Única Linha (Instalador Inteligente)
+
+Para facilitar ao máximo o compartilhamento com seus amigos, o Neo possui um **assistente interativo de instalação** desenvolvido em Node. 
+
+Para baixar o código, configurar as dependências em Python (venv), instalar os pacotes do Node e configurar as opções de persistência automaticamente, basta que eles abram o terminal de preferência e colem **esta única linha**:
+
+```bash
+git clone https://github.com/marcellopato/neo-js.git && cd neo-js && node install.js
+```
+
+O assistente guiará o usuário passo a passo com uma interface bonita no terminal!
+
+---
+
+### 🛠️ Instalação Manual Passo a Passo (Alternativa)
+
 ### 1. Pré-requisitos mínimos
 - **Node.js** (v18 ou superior)
 - **Python** (v3.10 ou superior)
