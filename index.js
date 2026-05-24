@@ -75,14 +75,32 @@ async function processTurn(inputData, chatId, retryCount = 0) {
         const response = await genAI.models.generateContent({
             model: 'gemini-2.0-flash',
             contents: history,
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: 'OBJECT',
+                    properties: {
+                        thought: { type: 'STRING' },
+                        action_type: { type: 'STRING', enum: ['reply', 'execute'] },
+                        action_content: { type: 'STRING' }
+                    },
+                    required: ['thought', 'action_type', 'action_content']
+                },
+                temperature: 0.2
+            }
         });
 
         let replyText = response.candidates[0].content.parts[0].text;
-        replyText = replyText.replace(/```json\n?/, '').replace(/```\n?$/, '').trim();
+        
+        let data;
+        try {
+            data = JSON.parse(replyText);
+        } catch (parseErr) {
+            console.error('[Erro de Parse]:', parseErr.message, '\nResposta bruta:', replyText);
+            throw new Error(`Falha ao decodificar JSON retornado pela IA. Resposta bruta: ${replyText.substring(0, 100)}...`);
+        }
 
-        const data = JSON.parse(replyText);
-        history.push({ role: 'model', parts: [{ text: replyText }] });
+        history.push({ role: 'model', parts: [{ text: JSON.stringify(data) }] });
 
         if (data.action_type === 'reply') {
             lastAgentMessage = data.action_content;
@@ -95,10 +113,21 @@ async function processTurn(inputData, chatId, retryCount = 0) {
             });
         }
     } catch (err) {
+        if (history.length > 0 && history[history.length - 1].role === 'user') {
+            history.pop();
+        }
+
         if (err.message.includes('429') && retryCount < 2) {
             setTimeout(() => processTurn(inputData, chatId, retryCount + 1), 3000);
         } else {
             console.error('[Erro]:', err.message);
+            try {
+                const errMsg = `⚠️ **Erro no Neo**: ${err.message.substring(0, 200)}`;
+                lastAgentMessage = errMsg;
+                await client.sendMessage(chatId, errMsg);
+            } catch (sendErr) {
+                console.error('Não foi possível enviar mensagem de erro para o WhatsApp:', sendErr.message);
+            }
         }
     }
 }
