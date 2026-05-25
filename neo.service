@@ -9,8 +9,6 @@ WorkingDirectory=/home/marcello/Documentos/www/Neo.JS
 ExecStart=/home/marcello/Documentos/www/Neo.JS/start.sh
 Restart=always
 RestartSec=10
-StandardOutput=append:/home/marcello/Documentos/www/Neo.JS/output.log
-StandardError=append:/home/marcello/Documentos/www/Neo.JS/output.log
 Environment=NODE_ENV=production
 
 [Install]
