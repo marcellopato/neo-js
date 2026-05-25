@@ -9,17 +9,23 @@ const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 let lastAgentMessage = "";
 let pendingAsk = null; // { resolve, timer, command }
 
+function withTimeout(promise, timeoutMs, errorMessage) {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error(errorMessage || 'Operação excedeu o tempo limite.'));
+        }, timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+}
+
+
 // Start WhatsApp Client
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
         headless: true
-    },
-    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wwebjs/web-files/main/index.html'
     }
 });
 
@@ -31,17 +37,35 @@ client.on('ready', () => {
 });
 
 client.on('message_create', async (msg) => {
+    console.log(`[DEBUG] Msg: tipo=${msg.type}, fromMe=${msg.fromMe}, from=${msg.from}, to=${msg.to}, hasMedia=${msg.hasMedia}, body="${msg.body || ''}"`);
     const isFromMe = msg.fromMe === true;
     const isGroup = msg.to.includes('@g.us') || msg.from.includes('@g.us') || msg.to.includes('@newsletter');
     
-    // Self-Chat filter
-    const isSelfChat = msg.to === '16174981058753@lid' || msg.to === client.info.wid._serialized;
+    // Self-Chat filter: verifica dinamicamente se o contato do chat é o próprio usuário, e usa fallback para IDs conhecidos pois o isMe pode falhar em LIDs
+    let isSelfChat = false;
+    if (isFromMe && !isGroup) {
+        // Tenta pela API (pode não funcionar para LIDs devido à forma como o whatsapp-web.js compara internamente)
+        try {
+            const contact = await client.getContactById(msg.to);
+            isSelfChat = (contact && contact.isMe === true);
+        } catch (e) {
+            console.error('[Bridge DEBUG] Erro ao obter contato:', e.message);
+        }
+        
+        // Se a API falhou em identificar (comum com LIDs), tenta os fallbacks de forma garantida
+        if (!isSelfChat) {
+            isSelfChat = msg.to === client.info.wid._serialized || 
+                         msg.to.includes('16174981058753') || 
+                         msg.to.includes('228191662801065');
+        }
+    }
 
     if (isFromMe && isSelfChat && !isGroup) {
-        if ((msg.type === 'voice' || msg.type === 'audio') && msg.hasMedia) {
+        if ((msg.type === 'voice' || msg.type === 'audio' || msg.type === 'ptt') && msg.hasMedia) {
              console.log('[Bridge]: Mensagem de áudio recebida! Baixando mídia...');
              try {
-                 const media = await msg.downloadMedia();
+                 // Limita o tempo de download a 30s para evitar travamento do Puppeteer
+                 const media = await withTimeout(msg.downloadMedia(), 30000, 'Tempo limite esgotado ao baixar o áudio do WhatsApp.');
                  if (media && media.data) {
                      console.log('[Bridge]: Transcrevendo áudio com o Gemini...');
                      const transcription = await transcribeAudio(media.data, media.mimetype);
@@ -52,6 +76,9 @@ client.on('message_create', async (msg) => {
 
                      // Prossegue enviando a transcrição ao agente
                      await forwardToAgent(transcription, msg.to);
+                 } else {
+                     console.error('[Bridge]: Falha ao obter dados do áudio (media ou media.data está nulo/indefinido)');
+                     await client.sendMessage(msg.to, '⚠️ *Erro ao processar áudio:* Não foi possível baixar o arquivo de mídia.');
                  }
              } catch (mediaErr) {
                  console.error('[Erro de áudio]:', mediaErr.message);
@@ -91,6 +118,10 @@ client.on('message_create', async (msg) => {
 });
 
 async function transcribeAudio(base64Data, mimeType) {
+    // Remove parâmetros do MIME type (ex: "; codecs=opus") que causam INVALID_ARGUMENT no Gemini
+    const cleanMimeType = mimeType.split(';')[0].trim();
+    console.log(`[Bridge]: Chamando Gemini API com MIME type: "${cleanMimeType}"`);
+
     const response = await genAI.models.generateContent({
         model: 'gemini-2.0-flash',
         contents: [
@@ -100,7 +131,7 @@ async function transcribeAudio(base64Data, mimeType) {
                     {
                         inlineData: {
                             data: base64Data,
-                            mimeType: mimeType
+                            mimeType: cleanMimeType
                         }
                     },
                     {
@@ -110,7 +141,18 @@ async function transcribeAudio(base64Data, mimeType) {
             }
         ]
     });
-    return response.candidates[0].content.parts[0].text;
+
+    if (
+        !response.candidates ||
+        !response.candidates[0] ||
+        !response.candidates[0].content ||
+        !response.candidates[0].content.parts ||
+        !response.candidates[0].content.parts[0]
+    ) {
+        throw new Error('Não foi possível obter a transcrição do Gemini (resposta vazia ou bloqueada).');
+    }
+
+    return response.candidates[0].content.parts[0].text.trim();
 }
 
 async function forwardToAgent(text, chatId) {
@@ -206,5 +248,20 @@ const server = http.createServer((req, res) => {
 server.listen(3303, () => {
     console.log('[✓] Servidor da Bridge rodando na porta 3303');
 });
+
+// Handle shutdown signals cleanly
+const shutdown = async (signal) => {
+    console.log(`[Bridge] Recebido sinal ${signal}. Fechando cliente do WhatsApp e encerrando...`);
+    try {
+        await client.destroy();
+        console.log('[Bridge] Cliente do WhatsApp fechado com sucesso.');
+    } catch (e) {
+        console.error('[Bridge] Erro ao fechar cliente do WhatsApp:', e.message);
+    }
+    process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 client.initialize();

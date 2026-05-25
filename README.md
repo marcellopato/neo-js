@@ -1,6 +1,8 @@
-# Neo.JS - Seu Assistente Pessoal Sênior de Backpocket 🚀🐳
+# Neo.JS - Seu Assistente Pessoal Sênior de Backpocket 🚀🐳🎙️
 
 O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux (Zorin OS)**). Ele utiliza o **Google Antigravity SDK** rodando sobre o **Gemini 2.0 Flash** como motor cognitivo avançado para processar linguagem natural, analisar seus códigos, gerenciar containers Docker e automatizar o seu terminal de desenvolvimento.
+
+> 🎙️ **Novidade:** O Neo agora **ouve** seus áudios! Envie um comando por voz diretamente no WhatsApp (gravando um áudio/PTT para si mesmo) e o Neo transcreve e executa automaticamente usando o Gemini.
 
 ---
 
@@ -23,7 +25,7 @@ graph TD
 ---
 
 ## 🛠️ Habilidades Principais
-
+- **🎙️ Comandos por Voz:** Grave um áudio (PTT) no WhatsApp para você mesmo e o Neo transcreve automaticamente com o **Gemini** e executa o comando — sem precisar digitar nada.
 - **Orquestração de Máquina:** Gerenciamento do Docker, consulta de status e logs, manipulação avançada de arquivos locais no diretório de desenvolvimento (`~/Documentos/www`).
 - **Engenharia de Software:** Expert sênior em **PHP (Laravel)**, **Node.js/TypeScript**, **Python** e **Flutter/Dart**.
 - **Privacidade Extrema:** O Neo possui um filtro de retenção estrita. Ele **apenas** responde e processa comandos enviados por você para você mesmo (Self-Chat / contato "Você") e ignora completamente quaisquer grupos ou conversas de terceiros.
