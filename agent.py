@@ -1,6 +1,6 @@
 import os
 import asyncio
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import requests
@@ -23,7 +23,11 @@ def is_safe_command(args) -> bool:
     cmd_lower = cmd.lower()
     
     # If there is shell chaining or output writing/pipes, play safe
-    if ">" in cmd_lower or "&&" in cmd_lower or ";" in cmd_lower or "|" in cmd_lower:
+    for char in [">", "&&", ";", "|", "`", "$", "(", ")", "<", "&"]:
+        if char in cmd_lower:
+            return False
+            
+    if ".." in cmd or ".ssh" in cmd or "/etc" in cmd:
         return False
         
     safe_prefixes = [
@@ -52,7 +56,8 @@ async def whatsapp_approval_handler(tool_call):
     def post():
         try:
             # We call the Node.js bridge to ask the user on WhatsApp
-            res = requests.post("http://localhost:3303/ask", json={"command": cmd}, timeout=600)
+            headers = {"X-Neo-Token": os.getenv("INTERNAL_API_KEY", "")}
+            res = requests.post("http://localhost:3303/ask", json={"command": cmd}, headers=headers, timeout=600)
             if res.status_code == 200:
                 approved = res.json().get("approved", False)
                 print(f"[Agent Policy] Approval result for '{cmd}': {approved}")
@@ -105,7 +110,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Neo Antigravity Agent Backend", lifespan=lifespan)
 
 @app.post("/chat")
-async def chat_endpoint(payload: ChatPayload):
+async def chat_endpoint(payload: ChatPayload, x_neo_token: str = Header(None)):
+    if x_neo_token != os.getenv("INTERNAL_API_KEY"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
     global agent_instance
     if not agent_instance:
         raise HTTPException(status_code=503, detail="Agent is not ready yet")

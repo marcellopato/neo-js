@@ -8,6 +8,7 @@ const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 let lastAgentMessage = "";
 let pendingAsk = null; // { resolve, timer, command }
+let isLocked = true; // Bot starts locked
 
 function withTimeout(promise, timeoutMs, errorMessage) {
     let timeoutId;
@@ -87,16 +88,39 @@ client.on('message_create', async (msg) => {
         } else if (msg.body && msg.body !== lastAgentMessage) {
             console.log(`\n[Bridge] Mensagem recebida no chat privado: ${msg.body}`);
             
+            const msgLower = msg.body.trim().toLowerCase();
+
+            // Lock System
+            if (isLocked) {
+                if (msgLower === 'neo?') {
+                    await client.sendMessage(msg.to, '🔒 Neo inativo. Informe a senha de acesso:');
+                    return;
+                }
+                
+                if (msg.body.trim() === process.env.NEO_PASSWORD) {
+                    isLocked = false;
+                    await client.sendMessage(msg.to, '🔓 Neo destravado! Pronto para os comandos.');
+                    return;
+                }
+                // Do not respond to anything else while locked
+                return;
+            }
+
+            if (msgLower === 'dormir' || msgLower === 'lock') {
+                isLocked = true;
+                await client.sendMessage(msg.to, '🔒 Neo voltou a dormir. Até a próxima!');
+                return;
+            }
+            
             // 1. Intercept if there's a pending permission request
             if (pendingAsk) {
-                const reply = msg.body.trim().toLowerCase();
-                if (reply === 'sim' || reply === 'yes' || reply === 'ok' || reply === 's') {
+                if (/^sim$|^yes$|^ok$|^s$/i.test(msgLower)) {
                     console.log("[Bridge] User approved command!");
                     clearTimeout(pendingAsk.timer);
                     pendingAsk.resolve(true);
                     lastAgentMessage = msg.body; // Prevent forwarding "sim" to the agent
                     return;
-                } else if (reply === 'não' || reply === 'no' || reply === 'nao' || reply === 'n') {
+                } else if (/^n(ão|ao)$|^no$|^n$/i.test(msgLower)) {
                     console.log("[Bridge] User denied command.");
                     clearTimeout(pendingAsk.timer);
                     pendingAsk.resolve(false);
@@ -165,7 +189,8 @@ async function forwardToAgent(text, chatId) {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(postData)
+            'Content-Length': Buffer.byteLength(postData),
+            'X-Neo-Token': process.env.INTERNAL_API_KEY
         },
         timeout: 600000 // 10 minutes timeout
     };
@@ -203,6 +228,12 @@ async function forwardToAgent(text, chatId) {
 // Start HTTP Bridge Server
 const server = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/ask') {
+        const token = req.headers['x-neo-token'];
+        if (token !== process.env.INTERNAL_API_KEY) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Unauthorized' }));
+        }
+
         let body = '';
         req.on('data', chunk => body += chunk);
         req.on('end', async () => {

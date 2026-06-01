@@ -41,4 +41,4 @@ $NODE_EXEC bridge.js &
 BRIDGE_PID=$!
 
 # Wait for subprocesses to exit
-wait "$AGENT_PID" "$BRIDGE_PID"
+wait -n "$AGENT_PID" "$BRIDGE_PID"
