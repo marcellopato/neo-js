@@ -36,7 +36,7 @@ graph TD
 
 ---
 
-## 💻 Instalação & Setup (macOS & Linux)
+## 💻 Instalação & Setup (Windows, macOS & Linux)
 
 ### 🚀 Atalho de Uma Única Linha (Instalador Inteligente)
 
@@ -99,10 +99,11 @@ npm install
 O projeto acompanha um script orquestrador universal chamado `start.sh` que inicia o backend do Python e a ponte do WhatsApp em concorrência, além de gerenciar o desligamento gracioso de ambos caso você pare o processo.
 
 Dê permissão de execução e inicie:
-```bash
-chmod +x start.sh
-./start.sh
-```
+*   **No macOS, Linux ou Windows (usando Git Bash):**
+    ```bash
+    chmod +x start.sh
+    ./start.sh
+    ```
 
 ### Método Manual (Para Debugging)
 Se preferir debugar as duas aplicações de forma independente, abra duas abas de terminal:
@@ -125,23 +126,30 @@ Se preferir debugar as duas aplicações de forma independente, abra duas abas d
 
 Se você deseja que o Neo rode permanentemente em segundo plano e se inicie de forma automática com o boot da máquina:
 
-### Opção A: No macOS (Usando PM2)
-O PM2 é a solução ideal e robusta para persistir processos no macOS de forma extremamente prática:
+### Opção A: No macOS ou Windows (Usando PM2)
+O PM2 é a solução ideal e robusta para persistir processos no macOS e no Windows de forma extremamente prática:
 
-1.  Instale o PM2 globalmente no seu Mac:
+1.  Instale o PM2 globalmente:
     ```bash
     npm install -g pm2
     ```
-2.  Inicie o script unificado do Neo:
+2.  Inicie o script unificado do Neo (no Windows, execute isso pelo Git Bash):
     ```bash
     pm2 start start.sh --name "neo-assistant"
     ```
-3.  Configure-o para inicializar com o boot do macOS:
-    ```bash
-    pm2 startup
-    # (Copie e execute o comando retornado no console para dar as permissões de sistema)
-    pm2 save
-    ```
+3.  Configure-o para inicializar com o boot da máquina:
+    *   **No macOS:**
+        ```bash
+        pm2 startup
+        # (Copie e execute o comando retornado no console para dar permissões)
+        pm2 save
+        ```
+    *   **No Windows:**
+        ```bash
+        npm install -g pm2-windows-startup
+        pm2-startup install
+        pm2 save
+        ```
 
 ### Opção B: No Linux (Usando systemd)
 O projeto inclui um arquivo `neo.service` pronto.
