@@ -35,6 +35,18 @@ client.on('qr', qr => qrcode.generate(qr, { small: true }));
 client.on('ready', () => {
     console.log('\n[✓] Bridge do WhatsApp está ONLINE!');
     console.log('ID Logado:', client.info.wid._serialized);
+
+    // Watchdog para evitar travamento silencioso do Chromium/Puppeteer
+    setInterval(async () => {
+        try {
+            if (client.pupPage) {
+                await withTimeout(client.pupPage.evaluate('1'), 15000, 'Browser congelado');
+            }
+        } catch (e) {
+            console.error('\n[Watchdog] ⚠️ Browser não respondeu. Forçando reinício para o systemd recuperar o serviço...');
+            process.exit(1);
+        }
+    }, 60000);
 });
 
 client.on('message_create', async (msg) => {

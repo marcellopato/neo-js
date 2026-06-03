@@ -67,6 +67,8 @@ cp .env.example .env
 Abra o `.env` e configure:
 ```env
 GEMINI_API_KEY=sua_completa_api_key_aqui
+INTERNAL_API_KEY=sua_senha_interna_segura
+NEO_PASSWORD=sua_contra_senha
 ```
 
 ### 3. Configurando o Backend (Python)
