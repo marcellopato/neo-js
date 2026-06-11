@@ -14,4 +14,4 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
 COPY package*.json ./
 RUN npm install
 COPY . .
-CMD ["node", "bridge.js"]
+CMD ["sh", "-c", "rm -f /app/.wwebjs_auth/session/SingletonLock && node bridge.js"]

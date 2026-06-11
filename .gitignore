@@ -7,3 +7,4 @@ venv/
 vendor/
 chroma_data/
 __pycache__/
+.chroma_cache/
