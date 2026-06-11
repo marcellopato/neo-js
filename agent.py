@@ -93,17 +93,29 @@ policies = [
 ]
 
 class AgentManager:
+    MAX_MESSAGES_PER_SESSION = 10  # reset conversation context after this many turns
+
     def __init__(self):
         self.agent = None
         self.conversation_id = None
         self.api_key = None
+        self.message_count = 0
         self.lock = asyncio.Lock()
         
     async def get_agent(self, api_key=None):
         async with self.lock:
-            if self.agent is None or self.api_key != api_key:
+            key_changed = self.api_key != api_key
+            session_expired = self.message_count >= self.MAX_MESSAGES_PER_SESSION
+
+            if self.agent is None or key_changed or session_expired:
+                if session_expired:
+                    print(f"[Agent] Session limit reached ({self.MAX_MESSAGES_PER_SESSION} msgs). Starting fresh context.")
+                    self.conversation_id = None  # drop accumulated history
+                    self.message_count = 0
                 self.api_key = api_key
                 await self._start_agent()
+
+            self.message_count += 1
             return self.agent
 
     async def _start_agent(self):

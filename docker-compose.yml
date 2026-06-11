@@ -1,12 +1,13 @@
 version: '3.8'
 
 services:
-  chromadb:
-    image: chromadb/chroma:latest
+  qdrant:
+    image: qdrant/qdrant:latest
     ports:
-      - "8000:8000"
+      - "6333:6333"   # REST API + Web UI (dashboard)
+      - "6334:6334"   # gRPC
     volumes:
-      - ./chroma_data:/chroma/chroma
+      - ./qdrant_data:/qdrant/storage
     restart: always
 
   backend:
@@ -18,7 +19,8 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - CHROMA_HOST=chromadb
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
       - BRIDGE_HOST=bridge
       - PYTHONUNBUFFERED=1
     volumes:
@@ -26,7 +28,7 @@ services:
       - ~/Documentos/www:/home/marcello/Documentos/www
       - ./.chroma_cache:/root/.cache
     depends_on:
-      - chromadb
+      - qdrant
     restart: always
 
   bridge:
@@ -35,6 +37,7 @@ services:
       dockerfile: Dockerfile.node
     environment:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - BACKEND_HOST=backend
       - NEO_PASSWORD=${NEO_PASSWORD}
     ports:

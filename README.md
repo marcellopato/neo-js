@@ -5,9 +5,11 @@
 ![GitHub license](https://img.shields.io/github/license/marcellopato/neo-js?style=for-the-badge&color=5865F2)
 ![GitHub open issues](https://img.shields.io/github/issues/marcellopato/neo-js?style=for-the-badge&color=ef4444)
 
-O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux (Zorin OS)**). Ele é totalmente compatível e funciona de forma integrada com o **Antigravity CLI**, utilizando o **Google Antigravity SDK** rodando sobre o **Gemini 2.0 Flash** como motor cognitivo avançado para processar linguagem natural, analisar seus códigos, gerenciar arquivos locais, comandos e infraestrutura Docker.
+O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux**). Ele é totalmente compatível com o **Antigravity CLI**, utilizando o **Google Antigravity SDK** com **Gemini** como motor cognitivo para processar linguagem natural, analisar código, gerenciar arquivos, comandos e infraestrutura Docker.
 
-> 🎙️ **Novidade:** O Neo agora **ouve** seus áudios! Envie um comando por voz diretamente no WhatsApp (gravando um áudio/PTT para si mesmo) e o Neo transcreve e executa automaticamente usando o Gemini.
+> 🎙️ **Voz:** Envie um áudio (PTT) no WhatsApp para si mesmo e o Neo transcreve e executa automaticamente.
+> 🖥️ **Desktop:** Interface nativa em Go+Wails com ícone na bandeja do sistema para Linux/Zorin OS.
+> 🧠 **Memória RAG:** Contexto semântico inteligente — o Neo lembra apenas do que é relevante, não de tudo.
 
 ### 👾 Aparência (Estilo Minecraft)
 
@@ -17,115 +19,168 @@ O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp di
 
 ---
 
-## 🏗️ Arquitetura Híbrida em Docker (Nova Versão)
+## 🏗️ Arquitetura
 
-Para garantir máxima estabilidade e isolamento lógico, a arquitetura do Neo foi totalmente **Dockerizada** e orquestrada via `docker-compose`. Ela agora se apoia em 3 containers independentes:
+A arquitetura do Neo é **Dockerizada**, orquestrada via `docker-compose`, com 4 serviços independentes:
 
 ```mermaid
 graph TD
-    User([Marcello / WhatsApp]) <-->|WhatsApp Web Protocol| Bridge[neojs-bridge-1]
-    Bridge <-->|HTTP POST /chat| Backend[neojs-backend-1]
-    Backend <-->|Google Gemini SDK| GeminiAPI[Google Gemini API]
-    Backend <-->|ChromaDB HTTP Client| ChromaDB[neojs-chromadb-1]
-    Backend <-->|CommandLine Exec| OS[Local OS / Terminal]
-    ChromaDB <-->|Persistência de Memória| Volume[./chroma_data]
+    User([Você / WhatsApp]) <-->|WhatsApp Web Protocol| Bridge[neojs-bridge]
+    Daemon([Desktop App\nGo + Wails]) <-->|HTTP POST /chat| Backend[neojs-backend]
+    Bridge <-->|HTTP POST /chat| Backend
+    Backend <-->|Google Antigravity SDK| GeminiAPI[Google Gemini API]
+    Backend <-->|fastembed local\nzero API cost| Qdrant[neojs-qdrant\nQdrant Vector DB]
+    Backend <-->|run_command / view_file| OS[Local OS / Terminal]
+    Qdrant <-->|Persistência vetorial| Volume[./qdrant_data]
 ```
 
-1. **Python Agent Backend (`neojs-backend`):** Controla o núcleo cognitivo usando o **Google Antigravity SDK**.
-2. **Node.js WhatsApp Bridge (`neojs-bridge`):** Gerencia a autenticação do WhatsApp Web e inicia o navegador headless seguro.
-3. **ChromaDB (`neojs-chromadb`):** Banco de dados vetorial focado em manter uma **memória de longo prazo** para o Neo aprender e lembrar conversas e contextos passados.
+### Como a memória funciona (RAG para diálogos)
 
-### 🖥️ Daemon Desktop & Tray (Interface Linux/Zorin OS)
-Para facilitar o controle no Linux/Zorin OS, desenvolvemos um **Daemon Desktop** nativo em Go e Wails:
-- **Instância Única (Single Instance):** O Neo impede processos clones e ícones duplicados na bandeja do sistema usando soquetes Unix. Se você abrir o Neo pelo painel de aplicativos do sistema novamente, ele simplesmente focará e trará a tela de chat ativa para o primeiro plano.
-- **Menu da Bandeja (System Tray Menu):** Ícone interativo e nítido ao lado do relógio que permite abrir a janela de chat, acessar as configurações locais ou encerrar o Neo com segurança.
-- **Fechar e Executar em Background ('X'):** O botão de fechamento ('X') no chat oculta a janela sem finalizar o assistente, permitindo que ele continue rodando em segundo plano e possa ser restaurado pelo menu do tray a qualquer momento.
-- **Configuração Local de API Key & Atalho:** Adicione e edite sua chave do Gemini de forma segura e local, e configure atalhos globais de teclado diretamente pela interface gráfica do aplicativo.
+Em vez de enviar **todo o histórico** da conversa a cada mensagem (crescimento quadrático de tokens 📈), o Neo usa uma abordagem **RAG (Retrieval-Augmented Generation)**:
+
+```
+ABORDAGEM TRADICIONAL (cara):
+Msg 10 → [system] + msg1 + msg2 + ... + msg10  ← ~10.000 tokens
+
+ABORDAGEM RAG DO NEO (eficiente):
+Msg 10 → [system] + [top-3 turns relevantes] + msg10  ← ~2.000 tokens constantes
+```
+
+Cada turno de conversa é vetorizado **localmente** com `fastembed` (modelo `BAAI/bge-small`, roda dentro do Docker, sem custo de API) e armazenado no **Qdrant**. A cada nova mensagem, os 3 turnos semanticamente mais relevantes são recuperados e injetados como contexto.
+
+### Serviços
+
+| Serviço | Tecnologia | Porta | Função |
+|---|---|---|---|
+| `neojs-backend` | Python + FastAPI + Antigravity SDK | `5000` | Núcleo cognitivo do Neo |
+| `neojs-bridge` | Node.js + whatsapp-web.js | `3303` | Bridge WhatsApp Web |
+| `neojs-qdrant` | Qdrant (Rust) | `6333` / `6334` | Memória vetorial + Dashboard |
+| `daemon` (optional) | Go + Wails | — | App desktop Linux/Zorin OS |
+
+### Controle de custo de tokens
+
+- **Sessão do Agent:** reseta automaticamente a cada **10 trocas**, evitando acúmulo de contexto
+- **Embeddings locais:** `fastembed` roda offline dentro do container, **zero custo de API**
+- **Score threshold:** turnos com relevância < 0.5 são ignorados (não poluem o contexto)
+- **Limite de chars:** payload de cada turno armazenado é limitado a 1.000 chars
+
+### 🔍 Qdrant Dashboard
+
+Quando o Neo estiver rodando, acesse `http://localhost:6333/dashboard` para visualizar em tempo real os diálogos vetorizados, pontos armazenados e fazer buscas semânticas na memória do Neo.
+
+### 🖥️ Daemon Desktop & Tray (Linux/Zorin OS)
+
+Um **Daemon Desktop** nativo em Go e Wails adiciona uma camada de interface gráfica:
+
+- **Instância Única:** Impede processos duplicados usando sockets Unix.
+- **Menu da Bandeja:** Ícone ao lado do relógio para abrir o chat, configurações ou encerrar.
+- **Fechar em Background:** O botão `X` oculta a janela sem matar o processo.
+- **Configuração de API Key:** Adicione sua chave Gemini de forma segura pela UI.
+- **Atalhos Globais:** Configure hotkeys globais pela interface.
+- **Entrada por Voz:** Clique no microfone no chat para enviar comandos por áudio — transcrição automática via Gemini.
 
 ---
 
 ## 🛠️ Habilidades Principais
-- **🎙️ Comandos por Voz:** Grave um áudio (PTT) no WhatsApp para você mesmo e o Neo transcreve e executa o comando.
-- **Memória Semântica:** Recorda conversas anteriores usando busca vetorial local via ChromaDB.
-- **Orquestração de Máquina:** Gerenciamento do Docker, consulta de status e logs, manipulação avançada de arquivos locais.
-- **Engenharia de Software:** Expert sênior em **PHP (Laravel)**, **Node.js/TypeScript**, **Python** e **Flutter/Dart**.
-- **Privacidade Extrema:** O Neo processa apenas comandos enviados de você para você mesmo (Self-Chat / contato "Você").
+
+- **🎙️ Comandos por Voz:** Grave um áudio (PTT) no WhatsApp ou no app desktop — o Neo transcreve e executa.
+- **🧠 Memória Semântica RAG:** Lembra conversas relevantes via busca vetorial no Qdrant (sem enviar tudo ao LLM).
+- **🐳 Orquestração Docker:** Gerencia containers, lê logs, executa comandos no terminal.
+- **💻 Engenharia de Software:** Expert sênior em PHP (Laravel), Node.js/TypeScript, Python e Flutter/Dart.
+- **🔒 Privacidade:** Processa apenas mensagens do Self-Chat (você para você mesmo).
 
 ---
 
-## 💻 Instalação & Setup 
+## 💻 Instalação & Setup
 
-### 🔑 Como Obter sua API Key do Gemini
+### 🔑 Obtendo sua API Key do Gemini
 
-Para utilizar o Neo, você precisará de uma chave de API do Gemini. Você pode obtê-la de duas formas:
+#### 1. Google AI Studio (Grátis com limites)
+1. Acesse [Google AI Studio](https://aistudio.google.com/) e faça login.
+2. Clique em **Get API Key** > **Create API Key**.
+3. Copie a chave (começa com `AIzaSy`).
 
-#### 1. Pelo Google AI Studio (Grátis com limites)
-1. Acesse o [Google AI Studio](https://aistudio.google.com/).
-2. Faça login com sua conta Google.
-3. Clique em **Get API Key** (Obter chave de API) no menu lateral.
-4. Escolha **Create API Key** e selecione um projeto padrão (ou crie um novo).
-5. Copie a chave gerada (geralmente começa com `AIzaSy` ou `AQ.`).
-6. *Nota: Chaves gratuitas possuem limites estritos de requisições por minuto e podem apresentar erros de quota esgotada se usadas intensivamente.*
+> ⚠️ Chaves gratuitas têm limites de requisições por minuto. Para uso contínuo, recomendamos ativar faturamento.
 
-#### 2. Pelo Google Cloud Console (Faturamento Ativo - Recomendado)
-Para usar o Neo sem limites e interrupções por falta de tokens, atrele a chave a um projeto Google Cloud com faturamento (billing) ativo:
+#### 2. Google Cloud Console (Faturamento Ativo — Recomendado)
 1. Acesse o [Google Cloud Console](https://console.cloud.google.com/).
-2. Crie ou selecione um projeto (ex: `Neo-AI`).
-3. Certifique-se de que o **Faturamento (Billing)** está ativado nas configurações do projeto.
-4. Vá em **APIs & Services > Library** (APIs e Serviços > Biblioteca), procure por **Generative Language API** (API de Linguagem Generativa) e clique em **Ativar** (Enable).
-5. Vá em **APIs & Services > Credentials** (APIs e Serviços > Credenciais).
-6. Clique em **+ Create Credentials** > **API Key** (+ Criar Credenciais > Chave de API).
-7. Copie a chave `AIzaSy...` gerada.
-8. *(Recomendado)* Restrinja a chave para ser usada apenas com a API *Generative Language API* para evitar uso indevido de outros recursos.
+2. Crie/selecione um projeto e ative o **Faturamento (Billing)**.
+3. Vá em **APIs & Services > Library**, ative a **Generative Language API**.
+4. Vá em **APIs & Services > Credentials** > **+ Create Credentials > API Key**.
+5. *(Recomendado)* Restrinja a chave para a Generative Language API.
 
 ---
 
-### 🚀 Instalação Rápida e Inteligente
-
-O projeto vem com um assistente em Node.js (que requer que você tenha o Node instalado no Host apenas para a configuração inicial do `.env`). Para iniciar a instalação, basta executar:
+### 🚀 Instalação Rápida
 
 ```bash
 git clone https://github.com/marcellopato/neo-js.git && cd neo-js && node install.js
 ```
 
-> **Atenção:** Se você já tinha o Neo instalado em uma versão anterior (local/sem docker), o instalador irá detectar a versão antiga e sugerir a execução da **Migração**.
+O instalador interativo configura o `.env`, detecta versões antigas e oferece migração automática.
 
 ### 🔧 Instalação Manual
-Se você prefere não usar o `install.js`:
-1. Copie o arquivo `.env.example` para `.env` e configure sua chave de API (GEMINI_API_KEY).
-2. Execute o orquestrador:
-   ```bash
-   ./start.sh
-   ```
-3. Acompanhe os logs para parear seu QR Code:
-   ```bash
-   docker compose logs -f bridge
-   ```
-
----
-
-## 🔄 Migração da versão Antiga para Docker
-
-Se você estiver atualizando os arquivos do Github e já tinha sua sessão do WhatsApp salva no `.wwebjs_auth` localmente, ela será incompatível com a nova estrutura e entrará em loop de erro.
-Para migrar sem problemas, rode o assistente de migração:
 
 ```bash
-chmod +x migrate.sh
-./migrate.sh
+# 1. Configure o ambiente
+cp .env.example .env
+# Edite .env e preencha: GEMINI_API_KEY, INTERNAL_API_KEY, NEO_PASSWORD
+
+# 2. Suba os containers
+./start.sh
+
+# 3. Escaneie o QR Code do WhatsApp
+docker compose logs -f bridge
 ```
-*O script de migração removerá as pastas de cache corrompidas e inicializará o Docker perfeitamente. Você terá que parear o WhatsApp escaneando o QR Code novamente.*
 
 ---
 
-## 🚀 Como Executar o Neo
+## 🔄 Migração da versão anterior
 
-Sempre que precisar iniciar o Neo, basta rodar o comando:
+Se você estava usando uma versão anterior (sem Docker ou com ChromaDB), rode:
+
+```bash
+chmod +x migrate.sh && ./migrate.sh
+```
+
+O script remove caches incompatíveis e reinicializa o Docker. Você precisará escanear o QR Code novamente.
+
+---
+
+## 🚀 Rodando o Neo
 
 ```bash
 ./start.sh
 ```
 
-Isso rodará o Docker Compose em modo daemon (`-d`), deixando o Neo silencioso trabalhando no background do seu computador.
+Isso sobe todos os containers em modo daemon. Para verificar o status:
+
+```bash
+docker compose ps
+```
+
+Para ver logs em tempo real:
+
+```bash
+docker compose logs -f backend   # Agente Python
+docker compose logs -f bridge    # WhatsApp Bridge
+```
+
+Para acessar o **Dashboard de Memória Vetorial**:
+```
+http://localhost:6333/dashboard
+```
 
 ---
+
+## 📦 Requisitos
+
+- **Docker** + **Docker Compose** (v2+)
+- **Node.js** (apenas para o `install.js` inicial)
+- **Chave de API do Gemini** (Google AI Studio ou Google Cloud)
+
+> Para o **Daemon Desktop** (Linux/Zorin OS): requer o binário `daemon` compilado com Go + Wails. Consulte `daemon/README.md`.
+
+---
+
 *Desenvolvido com carinho para simplificar e turbinar a vida de desenvolvedores modernos.* 🚀💻

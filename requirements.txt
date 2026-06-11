@@ -3,6 +3,4 @@ fastapi
 uvicorn
 requests
 python-dotenv
-chromadb-client
-onnxruntime
-tokenizers
+qdrant-client[fastembed]
