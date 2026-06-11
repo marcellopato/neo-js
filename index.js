@@ -73,7 +73,7 @@ async function processTurn(inputData, chatId, retryCount = 0) {
         history.push({ role: 'user', parts: [{ text: inputData }] });
 
         const response = await genAI.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-3.5-flash',
             contents: history,
             config: {
                 responseMimeType: 'application/json',
