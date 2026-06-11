@@ -61,6 +61,26 @@ async function main() {
 
     log(`\nPlataforma identificada: ${C.bold}${platform === 'darwin' ? 'macOS (Darwin)' : platform === 'linux' ? 'Linux' : platform}${C.reset}`);
 
+    // Step 0: Check for existing installation (Migration)
+    bold('\nStep 0: Verificando instalações anteriores...', C.yellow);
+    if (fs.existsSync(path.join(__dirname, '.wwebjs_auth')) || fs.existsSync(path.join(__dirname, 'venv'))) {
+        log('⚠ ATENÇÃO: Detectamos uma instalação antiga do Neo.JS nesta pasta.', C.red);
+        log('O Neo foi atualizado para uma nova arquitetura ultra-estável baseada em Docker.', C.cyan);
+        log('Se prosseguirmos, sua sessão antiga será limpa e você precisará escanear o QR Code novamente.', C.yellow);
+        const migrateChoice = await question('Deseja executar o processo de migração agora? (s/n): ');
+        if (migrateChoice.trim().toLowerCase() === 's') {
+            log('Iniciando o script de migração...', C.green);
+            try {
+                execSync('chmod +x migrate.sh && ./migrate.sh', { stdio: 'inherit' });
+            } catch (e) {
+                log('Falha ao rodar o script de migração. Execute manualmente: ./migrate.sh', C.red);
+            }
+            process.exit(0);
+        } else {
+            log('Continuando com o processo padrão de instalação (apenas para Docker)...', C.cyan);
+        }
+    }
+
     // Step 1: Check environment dependencies
     bold('\nStep 1: Verificando dependências do sistema...', C.yellow);
     try {

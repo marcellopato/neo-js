@@ -3,3 +3,5 @@ fastapi
 uvicorn
 requests
 python-dotenv
+chromadb-client
+onnxruntime

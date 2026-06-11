@@ -25,7 +25,8 @@ function withTimeout(promise, timeoutMs, errorMessage) {
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { 
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         headless: true
     }
 });
@@ -195,7 +196,7 @@ async function forwardToAgent(text, chatId) {
     const postData = JSON.stringify({ message: text });
     
     const options = {
-        hostname: '127.0.0.1',
+        hostname: process.env.BACKEND_HOST || '127.0.0.1',
         port: 5000,
         path: '/chat',
         method: 'POST',

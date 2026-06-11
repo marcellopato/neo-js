@@ -11,6 +11,7 @@ load_dotenv()
 
 from google.antigravity import Agent, LocalAgentConfig
 from google.antigravity.hooks import policy
+from memory import store_memory, retrieve_context
 
 class ChatPayload(BaseModel):
     message: str
@@ -57,7 +58,8 @@ async def whatsapp_approval_handler(tool_call):
         try:
             # We call the Node.js bridge to ask the user on WhatsApp
             headers = {"X-Neo-Token": os.getenv("INTERNAL_API_KEY", "")}
-            res = requests.post("http://localhost:3303/ask", json={"command": cmd}, headers=headers, timeout=600)
+            bridge_host = os.getenv("BRIDGE_HOST", "localhost")
+            res = requests.post(f"http://{bridge_host}:3303/ask", json={"command": cmd}, headers=headers, timeout=600)
             if res.status_code == 200:
                 approved = res.json().get("approved", False)
                 print(f"[Agent Policy] Approval result for '{cmd}': {approved}")
@@ -118,8 +120,17 @@ async def chat_endpoint(payload: ChatPayload, x_neo_token: str = Header(None)):
         raise HTTPException(status_code=503, detail="Agent is not ready yet")
     try:
         print(f"[Agent] Received message: {payload.message}")
-        response = await agent_instance.chat(payload.message)
+        
+        past_context = retrieve_context(payload.message)
+        augmented_message = payload.message
+        if past_context:
+            augmented_message = f"{payload.message}\n{past_context}"
+            
+        response = await agent_instance.chat(augmented_message)
         reply_text = await response.text()
+        
+        store_memory(payload.message, reply_text)
+        
         print(f"[Agent] Response generated: {reply_text[:100]}...")
         return {"response": reply_text}
     except Exception as e:
@@ -128,4 +139,4 @@ async def chat_endpoint(payload: ChatPayload, x_neo_token: str = Header(None)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=5000)
+    uvicorn.run(app, host="0.0.0.0", port=5000)

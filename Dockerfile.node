@@ -1,0 +1,17 @@
+FROM node:18-slim
+WORKDIR /app
+# Instala Chromium do apt e dependências de fontes/X11
+RUN apt-get update && apt-get install -y \
+    chromium \
+    fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+COPY package*.json ./
+RUN npm install
+COPY . .
+CMD ["node", "bridge.js"]

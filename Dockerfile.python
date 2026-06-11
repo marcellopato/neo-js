@@ -1,0 +1,8 @@
+FROM python:3.10-slim
+WORKDIR /app
+# Instala ferramentas do sistema para o Antigravity CLI e agent
+RUN apt-get update && apt-get install -y git docker.io curl procps && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["python", "agent.py"]

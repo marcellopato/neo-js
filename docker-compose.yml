@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma_data:/chroma/chroma
+    restart: always
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    ports:
+      - "5000:5000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - CHROMA_HOST=chromadb
+      - BRIDGE_HOST=bridge
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/Documentos/www:/home/marcello/Documentos/www
+    depends_on:
+      - chromadb
+    restart: always
+
+  bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - BACKEND_HOST=backend
+    volumes:
+      - ./.wwebjs_auth:/app/.wwebjs_auth
+      - ./.wwebjs_cache:/app/.wwebjs_cache
+    depends_on:
+      - backend
+    restart: always
+    shm_size: 1gb

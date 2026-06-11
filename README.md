@@ -1,173 +1,88 @@
 # Neo.JS - Seu Assistente Pessoal Sênior de Backpocket 🚀🐳🎙️
 
-O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux (Zorin OS)**). Ele é totalmente compatível e funciona de forma integrada com o **Antigravity CLI**, utilizando o **Google Antigravity SDK** rodando sobre o **Gemini 2.0 Flash** como motor cognitivo avançado para processar linguagem natural, analisar seus códigos, gerenciar containers Docker e automatizar o seu terminal de desenvolvimento.
-
+O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux (Zorin OS)**). Ele é totalmente compatível e funciona de forma integrada com o **Antigravity CLI**, utilizando o **Google Antigravity SDK** rodando sobre o **Gemini 2.0 Flash** como motor cognitivo avançado para processar linguagem natural, analisar seus códigos, gerenciar arquivos locais, comandos e infraestrutura Docker.
 
 > 🎙️ **Novidade:** O Neo agora **ouve** seus áudios! Envie um comando por voz diretamente no WhatsApp (gravando um áudio/PTT para si mesmo) e o Neo transcreve e executa automaticamente usando o Gemini.
 
 ---
 
-## 🏗️ Arquitetura Híbrida de Alta Robustez
+## 🏗️ Arquitetura Híbrida em Docker (Nova Versão)
 
-Para garantir maior estabilidade e isolamento lógico, o Neo foi reestruturado em uma arquitetura híbrida de dois processos:
+Para garantir máxima estabilidade e isolamento lógico, a arquitetura do Neo foi totalmente **Dockerizada** e orquestrada via `docker-compose`. Ela agora se apoia em 3 containers independentes:
 
 ```mermaid
 graph TD
-    User([Marcello / WhatsApp]) <-->|WhatsApp Web Protocol| Bridge[Node.js WhatsApp Bridge]
-    Bridge <-->|HTTP POST /chat on port 5000| Backend[Python Antigravity Agent]
+    User([Marcello / WhatsApp]) <-->|WhatsApp Web Protocol| Bridge[neojs-bridge-1]
+    Bridge <-->|HTTP POST /chat| Backend[neojs-backend-1]
     Backend <-->|Google Gemini SDK| GeminiAPI[Google Gemini API]
+    Backend <-->|ChromaDB HTTP Client| ChromaDB[neojs-chromadb-1]
     Backend <-->|CommandLine Exec| OS[Local OS / Terminal]
-    Bridge <-->|HTTP POST /ask on port 3303| User
+    ChromaDB <-->|Persistência de Memória| Volume[./chroma_data]
 ```
 
-1. **Python Agent Backend (`agent.py`):** Controla o núcleo cognitivo usando o **Google Antigravity SDK**, avalia políticas de segurança para comandos shell e manipula arquivos locais de desenvolvimento.
-2. **Node.js WhatsApp Bridge (`bridge.js`):** Gerencia a autenticação do WhatsApp Web (através do `whatsapp-web.js`), inicia o navegador headless do Puppeteer, ouve as mensagens exclusivas do chat privado e repassa ao Backend em Python.
+1. **Python Agent Backend (`neojs-backend`):** Controla o núcleo cognitivo usando o **Google Antigravity SDK**.
+2. **Node.js WhatsApp Bridge (`neojs-bridge`):** Gerencia a autenticação do WhatsApp Web e inicia o navegador headless seguro.
+3. **ChromaDB (`neojs-chromadb`):** Banco de dados vetorial focado em manter uma **memória de longo prazo** para o Neo aprender e lembrar conversas e contextos passados.
 
 ---
 
 ## 🛠️ Habilidades Principais
-- **🎙️ Comandos por Voz:** Grave um áudio (PTT) no WhatsApp para você mesmo e o Neo transcreve automaticamente com o **Gemini** e executa o comando — sem precisar digitar nada.
-- **Orquestração de Máquina:** Gerenciamento do Docker, consulta de status e logs, manipulação avançada de arquivos locais no diretório de desenvolvimento (`~/Documentos/www`).
+- **🎙️ Comandos por Voz:** Grave um áudio (PTT) no WhatsApp para você mesmo e o Neo transcreve e executa o comando.
+- **Memória Semântica:** Recorda conversas anteriores usando busca vetorial local via ChromaDB.
+- **Orquestração de Máquina:** Gerenciamento do Docker, consulta de status e logs, manipulação avançada de arquivos locais.
 - **Engenharia de Software:** Expert sênior em **PHP (Laravel)**, **Node.js/TypeScript**, **Python** e **Flutter/Dart**.
-- **Privacidade Extrema:** O Neo possui um filtro de retenção estrita. Ele **apenas** responde e processa comandos enviados por você para você mesmo (Self-Chat / contato "Você") e ignora completamente quaisquer grupos ou conversas de terceiros.
-- **Camada de Consentimento Seguro:**
-  - Comandos de **Leitura** (`ls`, `git status`, `cat`, `docker ps`, `logs`) são executados instantaneamente.
-  - Comandos de **Alteração** (`rm`, `mv`, `docker-compose down`, `apt`, `brew`) são bloqueados por segurança; o Neo envia uma mensagem perguntando se você autoriza. Basta responder "Sim", "S" ou "OK" no WhatsApp para ele prosseguir.
+- **Privacidade Extrema:** O Neo processa apenas comandos enviados de você para você mesmo (Self-Chat / contato "Você").
 
 ---
 
-## 💻 Instalação & Setup (Windows, macOS & Linux)
+## 💻 Instalação & Setup 
 
-### 🚀 Atalho de Uma Única Linha (Instalador Inteligente)
+### 🚀 Instalação Rápida e Inteligente
 
-Para facilitar ao máximo o compartilhamento com seus amigos, o Neo possui um **assistente interativo de instalação** desenvolvido em Node. 
-
-Para baixar o código, configurar as dependências em Python (venv), instalar os pacotes do Node e configurar as opções de persistência automaticamente, basta que eles abram o terminal de preferência e colem **esta única linha**:
+O projeto vem com um assistente em Node.js (que requer que você tenha o Node instalado no Host apenas para a configuração inicial do `.env`). Para iniciar a instalação, basta executar:
 
 ```bash
 git clone https://github.com/marcellopato/neo-js.git && cd neo-js && node install.js
 ```
 
-O assistente guiará o usuário passo a passo com uma interface bonita no terminal!
+> **Atenção:** Se você já tinha o Neo instalado em uma versão anterior (local/sem docker), o instalador irá detectar a versão antiga e sugerir a execução da **Migração**.
+
+### 🔧 Instalação Manual
+Se você prefere não usar o `install.js`:
+1. Copie o arquivo `.env.example` para `.env` e configure sua chave de API (GEMINI_API_KEY).
+2. Execute o orquestrador:
+   ```bash
+   ./start.sh
+   ```
+3. Acompanhe os logs para parear seu QR Code:
+   ```bash
+   docker compose logs -f bridge
+   ```
 
 ---
 
-### 🛠️ Instalação Manual Passo a Passo (Alternativa)
+## 🔄 Migração da versão Antiga para Docker
 
-### 1. Pré-requisitos mínimos
-- **Node.js** (v18 ou superior)
-- **Python** (v3.10 ou superior)
-- Git instalado
+Se você estiver atualizando os arquivos do Github e já tinha sua sessão do WhatsApp salva no `.wwebjs_auth` localmente, ela será incompatível com a nova estrutura e entrará em loop de erro.
+Para migrar sem problemas, rode o assistente de migração:
 
-### 2. Clonando e Configurando as Chaves
-Duplique o arquivo `.env.example` para `.env` e preencha a sua chave da Gemini API:
 ```bash
-cp .env.example .env
+chmod +x migrate.sh
+./migrate.sh
 ```
-Abra o `.env` e configure:
-```env
-GEMINI_API_KEY=sua_completa_api_key_aqui
-INTERNAL_API_KEY=sua_senha_interna_segura
-NEO_PASSWORD=sua_contra_senha
-```
-
-### 3. Configurando o Backend (Python)
-Crie o ambiente virtual local, ative-o e instale as dependências:
-
-*   **No macOS e Linux:**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    ```
-*   **No Windows:**
-    ```bash
-    python -m venv venv
-    .\venv\Scripts\activate
-    pip install -r requirements.txt
-    ```
-
-### 4. Configurando a Bridge (Node.js)
-Abra outra aba no terminal (ou na própria raiz do projeto) e instale os pacotes npm:
-```bash
-npm install
-```
+*O script de migração removerá as pastas de cache corrompidas e inicializará o Docker perfeitamente. Você terá que parear o WhatsApp escaneando o QR Code novamente.*
 
 ---
 
 ## 🚀 Como Executar o Neo
 
-### Método Unificado (Recomendado)
-O projeto acompanha um script orquestrador universal chamado `start.sh` que inicia o backend do Python e a ponte do WhatsApp em concorrência, além de gerenciar o desligamento gracioso de ambos caso você pare o processo.
+Sempre que precisar iniciar o Neo, basta rodar o comando:
 
-Dê permissão de execução e inicie:
-*   **No macOS, Linux ou Windows (usando Git Bash):**
-    ```bash
-    chmod +x start.sh
-    ./start.sh
-    ```
+```bash
+./start.sh
+```
 
-### Método Manual (Para Debugging)
-Se preferir debugar as duas aplicações de forma independente, abra duas abas de terminal:
-
-*   **Aba 1 (Python Agent Backend):**
-    ```bash
-    source venv/bin/activate
-    python agent.py
-    ```
-*   **Aba 2 (WhatsApp Bridge):**
-    ```bash
-    node bridge.js
-    ```
-
-> ⚠️ **Primeiro Acesso:** Ao iniciar a bridge pela primeira vez, um **QR Code** será desenhado no seu terminal. Escaneie-o usando o WhatsApp do celular (Aparelhos Conectados) para parear o agente.
-
----
-
-## 🐳 Persistência nas Reinicializações do Sistema
-
-Se você deseja que o Neo rode permanentemente em segundo plano e se inicie de forma automática com o boot da máquina:
-
-### Opção A: No macOS ou Windows (Usando PM2)
-O PM2 é a solução ideal e robusta para persistir processos no macOS e no Windows de forma extremamente prática:
-
-1.  Instale o PM2 globalmente:
-    ```bash
-    npm install -g pm2
-    ```
-2.  Inicie o script unificado do Neo (no Windows, execute isso pelo Git Bash):
-    ```bash
-    pm2 start start.sh --name "neo-assistant"
-    ```
-3.  Configure-o para inicializar com o boot da máquina:
-    *   **No macOS:**
-        ```bash
-        pm2 startup
-        # (Copie e execute o comando retornado no console para dar permissões)
-        pm2 save
-        ```
-    *   **No Windows:**
-        ```bash
-        npm install -g pm2-windows-startup
-        pm2-startup install
-        pm2 save
-        ```
-
-### Opção B: No Linux (Usando systemd)
-O projeto inclui um arquivo `neo.service` pronto.
-
-1.  Ajuste os caminhos absolutos de usuário e diretório dentro do `neo.service` para os dados da sua máquina.
-2.  Mova-o para as pastas do systemd e inicie:
-    ```bash
-    sudo cp neo.service /etc/systemd/system/
-    sudo systemctl daemon-reload
-    sudo systemctl enable neo.service
-    sudo systemctl start neo.service
-    ```
-3.  Acompanhe os logs em tempo real usando:
-    ```bash
-    tail -f output.log
-    ```
+Isso rodará o Docker Compose em modo daemon (`-d`), deixando o Neo silencioso trabalhando no background do seu computador.
 
 ---
 *Desenvolvido com carinho para simplificar e turbinar a vida de desenvolvedores modernos.* 🚀💻

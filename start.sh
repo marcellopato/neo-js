@@ -1,44 +1,23 @@
 #!/bin/bash
-
-# Navigate to the script's directory
 cd "$(dirname "$0")"
 
-echo "[Start] Neo Hybrid Service is starting up..."
+echo "[Start] Neo Hybrid Service is starting up via Docker..."
 
-# Define cleanup function
-cleanup() {
-    echo "[Start] Shutting down subprocesses..."
-    kill "$AGENT_PID" "$BRIDGE_PID" 2>/dev/null
-    exit 0
-}
-
-# Trap signals
-trap cleanup SIGINT SIGTERM EXIT
-
-# Start Python Agent
-echo "[Start] Starting Python Agent Backend..."
-./venv/bin/python3 agent.py &
-AGENT_PID=$!
-
-# Wait a couple of seconds for FastAPI to bind
-sleep 2
-
-# Find node dynamically, check standard location first, and fallback to NVM
-NODE_EXEC=$(which node)
-if [ -z "$NODE_EXEC" ]; then
-    if [ -f "$HOME/.nvm/nvm.sh" ]; then
-        . "$HOME/.nvm/nvm.sh"
-        NODE_EXEC=$(which node)
-    fi
+# Verifica se o docker compose está disponível
+if command -v docker-compose &> /dev/null; then
+    docker-compose up -d --build
+elif docker compose version &> /dev/null; then
+    docker compose up -d --build
+else
+    echo "Erro: Docker e Docker Compose não encontrados. Por favor, instale-os primeiro."
+    exit 1
 fi
 
-if [ -z "$NODE_EXEC" ]; then
-    # Fallback default if absolutely not found
-    NODE_EXEC="node"
-fi
-
-$NODE_EXEC bridge.js &
-BRIDGE_PID=$!
-
-# Wait for subprocesses to exit
-wait -n "$AGENT_PID" "$BRIDGE_PID"
+echo ""
+echo "=========================================================="
+echo "   O Neo está rodando em segundo plano!                   "
+echo "                                                          "
+echo "   Para ver o QR Code do WhatsApp, digite no terminal:    "
+echo "   docker compose logs -f bridge                          "
+echo "=========================================================="
+echo ""
