@@ -3,12 +3,11 @@ Description=Neo WhatsApp Assistant Bridge
 After=network.target
 
 [Service]
-Type=simple
+Type=oneshot
+RemainAfterExit=yes
 User=marcello
 WorkingDirectory=/home/marcello/Documentos/www/Neo.JS
 ExecStart=/home/marcello/Documentos/www/Neo.JS/start.sh
-Restart=always
-RestartSec=10
 Environment=NODE_ENV=production
 
 [Install]

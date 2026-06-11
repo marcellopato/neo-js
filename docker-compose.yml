@@ -20,9 +20,11 @@ services:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - CHROMA_HOST=chromadb
       - BRIDGE_HOST=bridge
+      - PYTHONUNBUFFERED=1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ~/Documentos/www:/home/marcello/Documentos/www
+      - ./.chroma_cache:/root/.cache
     depends_on:
       - chromadb
     restart: always
@@ -34,6 +36,9 @@ services:
     environment:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - BACKEND_HOST=backend
+      - NEO_PASSWORD=${NEO_PASSWORD}
+    ports:
+      - "3303:3303"
     volumes:
       - ./.wwebjs_auth:/app/.wwebjs_auth
       - ./.wwebjs_cache:/app/.wwebjs_cache

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 # Load env variables from .env
 load_dotenv()
 
-from google.antigravity import Agent, LocalAgentConfig
+from google.antigravity import Agent, LocalAgentConfig, types
 from google.antigravity.hooks import policy
 from memory import store_memory, retrieve_context
 
@@ -92,33 +92,104 @@ policies = [
     policy.allow_all()
 ]
 
+class AgentManager:
+    def __init__(self):
+        self.agent = None
+        self.conversation_id = None
+        self.api_key = None
+        self.lock = asyncio.Lock()
+        
+    async def get_agent(self, api_key=None):
+        async with self.lock:
+            if self.agent is None or self.api_key != api_key:
+                self.api_key = api_key
+                await self._start_agent()
+            return self.agent
+
+    async def _start_agent(self):
+        home_dir = os.path.expanduser("~")
+        app_data_dir = os.path.join(home_dir, ".gemini", "antigravity", "brain")
+        save_dir = os.path.join(app_data_dir, "conversations")
+        os.makedirs(save_dir, exist_ok=True)
+        
+        config = LocalAgentConfig(
+            system_instructions=SYSTEM_PROMPT,
+            policies=policies,
+            app_data_dir=app_data_dir,
+            save_dir=save_dir,
+            conversation_id=self.conversation_id,
+            api_key=self.api_key
+        )
+        
+        print(f"Initializing new Agent instance (API Key present: {self.api_key is not None})...")
+        new_agent = Agent(config)
+        await new_agent.__aenter__()
+        
+        if self.agent is not None:
+            try:
+                await self.agent.__aexit__(None, None, None)
+            except Exception as e:
+                print(f"Error closing old agent: {e}")
+                
+        self.agent = new_agent
+        self.conversation_id = new_agent.conversation_id
+        print(f"Agent initialized successfully with conversation_id: {self.conversation_id}")
+
+    async def recreate_agent(self):
+        async with self.lock:
+            if self.agent is not None:
+                if self.agent.conversation_id:
+                    self.conversation_id = self.agent.conversation_id
+                print("Closing existing Agent instance due to connection issues...")
+                try:
+                    await self.agent.__aexit__(None, None, None)
+                except Exception as e:
+                    print(f"Error closing agent: {e}")
+                self.agent = None
+            
+            # Restart agent
+            await self._start_agent()
+
+    async def close(self):
+        async with self.lock:
+            if self.agent is not None:
+                print("Closing Agent instance...")
+                try:
+                    await self.agent.__aexit__(None, None, None)
+                except Exception as e:
+                    print(f"Error closing agent: {e}")
+                self.agent = None
+
+agent_manager = AgentManager()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global agent_instance
-    home_dir = os.path.expanduser("~")
-    app_data_dir = os.path.join(home_dir, ".gemini", "antigravity", "brain")
-    config = LocalAgentConfig(
-        system_instructions=SYSTEM_PROMPT,
-        policies=policies,
-        app_data_dir=app_data_dir,
-    )
-    print("Starting Antigravity Agent...")
-    async with Agent(config) as active_agent:
-        agent_instance = active_agent
-        print("Antigravity Agent is ready!")
-        yield
-    print("Antigravity Agent shut down.")
+    print("Starting Antigravity Agent via AgentManager...")
+    await agent_manager.get_agent()
+    yield
+    print("Shutting down AgentManager...")
+    await agent_manager.close()
 
 app = FastAPI(title="Neo Antigravity Agent Backend", lifespan=lifespan)
 
 @app.post("/chat")
-async def chat_endpoint(payload: ChatPayload, x_neo_token: str = Header(None)):
+async def chat_endpoint(
+    payload: ChatPayload, 
+    x_neo_token: str = Header(None),
+    x_gemini_api_key: str = Header(None)
+):
     if x_neo_token != os.getenv("INTERNAL_API_KEY"):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    global agent_instance
-    if not agent_instance:
-        raise HTTPException(status_code=503, detail="Agent is not ready yet")
     try:
+        target_api_key = x_gemini_api_key
+        if target_api_key:
+            target_api_key = target_api_key.strip()
+            if not target_api_key:
+                target_api_key = None
+        else:
+            target_api_key = None
+
+        agent_instance = await agent_manager.get_agent(api_key=target_api_key)
         print(f"[Agent] Received message: {payload.message}")
         
         past_context = retrieve_context(payload.message)
@@ -126,8 +197,30 @@ async def chat_endpoint(payload: ChatPayload, x_neo_token: str = Header(None)):
         if past_context:
             augmented_message = f"{payload.message}\n{past_context}"
             
-        response = await agent_instance.chat(augmented_message)
-        reply_text = await response.text()
+        try:
+            response = await agent_instance.chat(augmented_message)
+            reply_text = await response.text()
+        except (types.AntigravityConnectionError, Exception) as chat_err:
+            err_str = str(chat_err).lower()
+            print(f"[Agent] Connection or WebSocket error during chat: {chat_err}")
+            
+            is_connection_error = (
+                isinstance(chat_err, types.AntigravityConnectionError) or
+                "connection" in err_str or
+                "received 1000" in err_str or
+                "closed" in err_str or
+                "1006" in err_str or
+                "1000" in err_str
+            )
+            
+            if is_connection_error:
+                print("[Agent] Recreating agent due to connection drop and retrying...")
+                await agent_manager.recreate_agent()
+                agent_instance = await agent_manager.get_agent(api_key=target_api_key)
+                response = await agent_instance.chat(augmented_message)
+                reply_text = await response.text()
+            else:
+                raise chat_err
         
         store_memory(payload.message, reply_text)
         
