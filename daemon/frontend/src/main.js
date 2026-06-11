@@ -227,79 +227,154 @@ async function checkWhatsAppStatus() {
     }
 }
 
-// --- Voice Commands (MediaRecorder) ---
-let mediaRecorder = null;
-let audioChunks = [];
+// --- Voice Commands (Web Audio API Recorder) ---
+let audioContext = null;
+let audioSource = null;
+let audioProcessor = null;
+let mediaStream = null;
+let recordingBuffer = [];
+let isVoiceRecording = false;
 const micBtn = document.getElementById('mic-btn');
 
+function writeString(view, offset, string) {
+    for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+    }
+}
+
+function bufferToWav(buffer, sampleRate) {
+    let length = buffer.length * 2;
+    let bufferHelper = new ArrayBuffer(44 + length);
+    let view = new DataView(bufferHelper);
+    
+    /* RIFF identifier */
+    writeString(view, 0, 'RIFF');
+    /* file length */
+    view.setUint32(4, 36 + length, true);
+    /* RIFF type */
+    writeString(view, 8, 'WAVE');
+    /* format chunk identifier */
+    writeString(view, 12, 'fmt ');
+    /* format chunk length */
+    view.setUint32(16, 16, true);
+    /* sample format (raw pcm) */
+    view.setUint16(20, 1, true);
+    /* channel count */
+    view.setUint16(22, 1, true);
+    /* sample rate */
+    view.setUint32(24, sampleRate, true);
+    /* byte rate (sample rate * block align) */
+    view.setUint32(28, sampleRate * 2, true);
+    /* block align (channel count * bytes per sample) */
+    view.setUint16(32, 2, true);
+    /* bits per sample */
+    view.setUint16(34, 16, true);
+    /* data chunk identifier */
+    writeString(view, 36, 'data');
+    /* chunk length */
+    view.setUint32(40, length, true);
+    
+    // Write PCM audio samples
+    let offset = 44;
+    for (let i = 0; i < buffer.length; i++, offset += 2) {
+        let s = Math.max(-1, Math.min(1, buffer[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+    
+    return new Blob([view], { type: 'audio/wav' });
+}
+
 micBtn.addEventListener('click', async () => {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-        micBtn.classList.remove('recording');
+    if (isVoiceRecording) {
+        stopRecording();
         return;
     }
 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioChunks = [];
-        
-        let options = {};
-        if (MediaRecorder.isTypeSupported('audio/webm')) {
-            options = { mimeType: 'audio/webm' };
-        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-            options = { mimeType: 'audio/ogg' };
-        }
-        
-        mediaRecorder = new MediaRecorder(stream, options);
-        
-        mediaRecorder.addEventListener('dataavailable', event => {
-            audioChunks.push(event.data);
-        });
-        
-        mediaRecorder.addEventListener('stop', async () => {
-            stream.getTracks().forEach(track => track.stop());
-            
-            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-            
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = async () => {
-                const base64Data = reader.result.split(',')[1];
-                
-                appendMessage('user', '🎙️ [Áudio Enviado]');
-                const loadingId = appendMessage('neo', 'Transcrevendo áudio...');
-                
-                try {
-                    const transcription = await TranscribeAudio(base64Data, mediaRecorder.mimeType);
-                    
-                    if (transcription.startsWith('Erro:')) {
-                        updateMessage(loadingId, transcription);
-                        return;
-                    }
-                    
-                    // Update user message with the transcription text
-                    const userMsgs = document.getElementsByClassName('message user');
-                    if (userMsgs.length > 0) {
-                        userMsgs[userMsgs.length - 1].innerText = `🎙️ "${transcription}"`;
-                    }
-                    
-                    // Send to Neo
-                    updateMessage(loadingId, 'Pensando...');
-                    const response = await AskNeo(transcription);
-                    updateMessage(loadingId, response);
-                } catch (err) {
-                    updateMessage(loadingId, `Erro ao processar áudio: ${err}`);
-                }
-            };
-        });
-        
-        mediaRecorder.start();
-        micBtn.classList.add('recording');
+        startRecording(stream);
     } catch (err) {
         console.error('Erro ao acessar microfone:', err);
-        alert('Erro ao acessar o microfone. Verifique suas permissões nas configurações do sistema.');
+        alert('Erro ao acessar o microfone: ' + err.name + ' (' + err.message + ').\nVerifique suas permissões nas configurações do sistema.');
     }
 });
+
+function startRecording(stream) {
+    mediaStream = stream;
+    recordingBuffer = [];
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    audioSource = audioContext.createMediaStreamSource(stream);
+    audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+
+    audioProcessor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        recordingBuffer.push(new Float32Array(inputData));
+    };
+
+    audioSource.connect(audioProcessor);
+    audioProcessor.connect(audioContext.destination);
+    
+    isVoiceRecording = true;
+    micBtn.classList.add('recording');
+}
+
+async function stopRecording() {
+    if (!isVoiceRecording) return;
+    
+    audioProcessor.disconnect();
+    audioSource.disconnect();
+    
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+    }
+    
+    const sampleRate = audioContext.sampleRate;
+    audioContext.close();
+    
+    isVoiceRecording = false;
+    micBtn.classList.remove('recording');
+    
+    let totalLength = recordingBuffer.reduce((acc, buf) => acc + buf.length, 0);
+    let result = new Float32Array(totalLength);
+    let offset = 0;
+    for (let buf of recordingBuffer) {
+        result.set(buf, offset);
+        offset += buf.length;
+    }
+    
+    const wavBlob = bufferToWav(result, sampleRate);
+    
+    const reader = new FileReader();
+    reader.readAsDataURL(wavBlob);
+    reader.onloadend = async () => {
+        const base64Data = reader.result.split(',')[1];
+        
+        appendMessage('user', '🎙️ [Áudio Enviado]');
+        const loadingId = appendMessage('neo', 'Transcrevendo áudio...');
+        
+        try {
+            const transcription = await TranscribeAudio(base64Data, 'audio/wav');
+            
+            if (transcription.startsWith('Erro:')) {
+                updateMessage(loadingId, transcription);
+                return;
+            }
+            
+            // Update user message with the transcription text
+            const userMsgs = document.getElementsByClassName('message user');
+            if (userMsgs.length > 0) {
+                userMsgs[userMsgs.length - 1].innerText = `🎙️ "${transcription}"`;
+            }
+            
+            // Send to Neo
+            updateMessage(loadingId, 'Pensando...');
+            const response = await AskNeo(transcription);
+            updateMessage(loadingId, response);
+        } catch (err) {
+            updateMessage(loadingId, `Erro ao processar áudio: ${err}`);
+        }
+    };
+}
 
 window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

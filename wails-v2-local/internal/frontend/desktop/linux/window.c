@@ -555,10 +555,13 @@ static gboolean onDragDrop(GtkWidget* self, GdkDragContext* context, gint x, gin
 }
 
 static gboolean permission_request_cb(WebKitWebView *web_view, WebKitPermissionRequest *request, gpointer user_data) {
+    g_print("[Wails WebKit] permission_request_cb triggered\n");
     if (WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(request)) {
+        g_print("[Wails WebKit] Allowing user media permission request\n");
         webkit_permission_request_allow(request);
         return TRUE;
     }
+    g_print("[Wails WebKit] Other permission request ignored\n");
     return FALSE;
 }
 
@@ -572,6 +575,8 @@ GtkWidget *SetupWebview(void *contentManager, GtkWindow *window, int hideWindowO
     g_object_set_data(G_OBJECT((WebKitUserContentManager *)contentManager), "webview", webview);
     // gtk_container_add(GTK_CONTAINER(window), webview);
     WebKitWebContext *context = webkit_web_context_get_default();
+    WebKitSecurityManager *security_manager = webkit_web_context_get_security_manager(context);
+    webkit_security_manager_register_uri_scheme_as_secure(security_manager, "wails");
     webkit_web_context_register_uri_scheme(context, "wails", (WebKitURISchemeRequestCallback)processURLRequest, NULL, NULL);
     g_signal_connect(G_OBJECT(webview), "load-changed", G_CALLBACK(webviewLoadChanged), NULL);
 

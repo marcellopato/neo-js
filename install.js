@@ -110,19 +110,39 @@ async function main() {
     bold('\nStep 2: Configurando arquivo de ambiente (.env)...', C.yellow);
     const envPath = path.join(__dirname, '.env');
     let geminiKey = '';
+    let internalApiKey = 'neo_internal_secret_token_' + Math.random().toString(36).substring(2, 15);
+    let neoPassword = 'neo_password_' + Math.random().toString(36).substring(2, 15);
 
     if (fs.existsSync(envPath)) {
         log('O arquivo .env já existe nesta pasta.', C.cyan);
         const choiceEnv = await question('Deseja sobrescrevê-lo com uma nova chave API? (s/n): ');
         if (choiceEnv.trim().toLowerCase() === 's') {
             geminiKey = await question('Digite sua nova GEMINI_API_KEY: ');
+            
+            // Read existing keys to preserve them if they exist
+            try {
+                const currentContent = fs.readFileSync(envPath, 'utf8');
+                const lines = currentContent.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('INTERNAL_API_KEY=')) {
+                        const val = line.substring('INTERNAL_API_KEY='.length).trim();
+                        if (val) internalApiKey = val;
+                    }
+                    if (line.startsWith('NEO_PASSWORD=')) {
+                        const val = line.substring('NEO_PASSWORD='.length).trim();
+                        if (val) neoPassword = val;
+                    }
+                }
+            } catch (err) {
+                // Ignore reading errors, use generated defaults
+            }
         }
     } else {
         geminiKey = await question('Digite sua GEMINI_API_KEY (Gemini 2.0 Flash): ');
     }
 
     if (geminiKey) {
-        fs.writeFileSync(envPath, `GEMINI_API_KEY=${geminiKey.trim()}\n`);
+        fs.writeFileSync(envPath, `GEMINI_API_KEY=${geminiKey.trim()}\nINTERNAL_API_KEY=${internalApiKey}\nNEO_PASSWORD=${neoPassword}\n`);
         log('✓ Arquivo .env criado e salvo com sucesso!', C.green);
     } else {
         log('Mantendo o arquivo .env existente ou pulando configuração.', C.cyan);

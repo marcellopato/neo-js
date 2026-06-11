@@ -55,6 +55,31 @@ Para facilitar o controle no Linux/Zorin OS, desenvolvemos um **Daemon Desktop**
 
 ## 💻 Instalação & Setup 
 
+### 🔑 Como Obter sua API Key do Gemini
+
+Para utilizar o Neo, você precisará de uma chave de API do Gemini. Você pode obtê-la de duas formas:
+
+#### 1. Pelo Google AI Studio (Grátis com limites)
+1. Acesse o [Google AI Studio](https://aistudio.google.com/).
+2. Faça login com sua conta Google.
+3. Clique em **Get API Key** (Obter chave de API) no menu lateral.
+4. Escolha **Create API Key** e selecione um projeto padrão (ou crie um novo).
+5. Copie a chave gerada (geralmente começa com `AIzaSy` ou `AQ.`).
+6. *Nota: Chaves gratuitas possuem limites estritos de requisições por minuto e podem apresentar erros de quota esgotada se usadas intensivamente.*
+
+#### 2. Pelo Google Cloud Console (Faturamento Ativo - Recomendado)
+Para usar o Neo sem limites e interrupções por falta de tokens, atrele a chave a um projeto Google Cloud com faturamento (billing) ativo:
+1. Acesse o [Google Cloud Console](https://console.cloud.google.com/).
+2. Crie ou selecione um projeto (ex: `Neo-AI`).
+3. Certifique-se de que o **Faturamento (Billing)** está ativado nas configurações do projeto.
+4. Vá em **APIs & Services > Library** (APIs e Serviços > Biblioteca), procure por **Generative Language API** (API de Linguagem Generativa) e clique em **Ativar** (Enable).
+5. Vá em **APIs & Services > Credentials** (APIs e Serviços > Credenciais).
+6. Clique em **+ Create Credentials** > **API Key** (+ Criar Credenciais > Chave de API).
+7. Copie a chave `AIzaSy...` gerada.
+8. *(Recomendado)* Restrinja a chave para ser usada apenas com a API *Generative Language API* para evitar uso indevido de outros recursos.
+
+---
+
 ### 🚀 Instalação Rápida e Inteligente
 
 O projeto vem com um assistente em Node.js (que requer que você tenha o Node instalado no Host apenas para a configuração inicial do `.env`). Para iniciar a instalação, basta executar:
