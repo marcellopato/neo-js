@@ -1,8 +1,19 @@
 # Neo.JS - Seu Assistente Pessoal Sênior de Backpocket 🚀🐳🎙️
 
+![GitHub repo size](https://img.shields.io/github/repo-size/marcellopato/neo-js?style=for-the-badge&color=25D366)
+![GitHub last commit](https://img.shields.io/github/last-commit/marcellopato/neo-js?style=for-the-badge&color=007aff)
+![GitHub license](https://img.shields.io/github/license/marcellopato/neo-js?style=for-the-badge&color=5865F2)
+![GitHub open issues](https://img.shields.io/github/issues/marcellopato/neo-js?style=for-the-badge&color=ef4444)
+
 O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux (Zorin OS)**). Ele é totalmente compatível e funciona de forma integrada com o **Antigravity CLI**, utilizando o **Google Antigravity SDK** rodando sobre o **Gemini 2.0 Flash** como motor cognitivo avançado para processar linguagem natural, analisar seus códigos, gerenciar arquivos locais, comandos e infraestrutura Docker.
 
 > 🎙️ **Novidade:** O Neo agora **ouve** seus áudios! Envie um comando por voz diretamente no WhatsApp (gravando um áudio/PTT para si mesmo) e o Neo transcreve e executa automaticamente usando o Gemini.
+
+### 👾 Aparência (Estilo Minecraft)
+
+| Avatar do App / Tray | Corpo Inteiro |
+|:---:|:---:|
+| <img src="neo_head.png" width="180" /> | <img src="neo_full_body.png" width="180" /> |
 
 ---
 
@@ -23,6 +34,13 @@ graph TD
 1. **Python Agent Backend (`neojs-backend`):** Controla o núcleo cognitivo usando o **Google Antigravity SDK**.
 2. **Node.js WhatsApp Bridge (`neojs-bridge`):** Gerencia a autenticação do WhatsApp Web e inicia o navegador headless seguro.
 3. **ChromaDB (`neojs-chromadb`):** Banco de dados vetorial focado em manter uma **memória de longo prazo** para o Neo aprender e lembrar conversas e contextos passados.
+
+### 🖥️ Daemon Desktop & Tray (Interface Linux/Zorin OS)
+Para facilitar o controle no Linux/Zorin OS, desenvolvemos um **Daemon Desktop** nativo em Go e Wails:
+- **Instância Única (Single Instance):** O Neo impede processos clones e ícones duplicados na bandeja do sistema usando soquetes Unix. Se você abrir o Neo pelo painel de aplicativos do sistema novamente, ele simplesmente focará e trará a tela de chat ativa para o primeiro plano.
+- **Menu da Bandeja (System Tray Menu):** Ícone interativo e nítido ao lado do relógio que permite abrir a janela de chat, acessar as configurações locais ou encerrar o Neo com segurança.
+- **Fechar e Executar em Background ('X'):** O botão de fechamento ('X') no chat oculta a janela sem finalizar o assistente, permitindo que ele continue rodando em segundo plano e possa ser restaurado pelo menu do tray a qualquer momento.
+- **Configuração Local de API Key & Atalho:** Adicione e edite sua chave do Gemini de forma segura e local, e configure atalhos globais de teclado diretamente pela interface gráfica do aplicativo.
 
 ---
 
