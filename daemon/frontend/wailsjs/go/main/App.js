@@ -57,3 +57,7 @@ export function ShowWindow() {
 export function ToggleAutoStart(arg1) {
   return window['go']['main']['App']['ToggleAutoStart'](arg1);
 }
+
+export function TranscribeAudio(arg1, arg2) {
+  return window['go']['main']['App']['TranscribeAudio'](arg1, arg2);
+}

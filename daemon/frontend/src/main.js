@@ -1,4 +1,4 @@
-import { AskNeo, HideWindow, Quit, ToggleAutoStart, GetAutoStartStatus, SetHotkey, GetCurrentHotkey, GetWhatsAppStatus, GetGeminiAPIKey, SetGeminiAPIKey } from '../wailsjs/go/main/App.js';
+import { AskNeo, HideWindow, Quit, ToggleAutoStart, GetAutoStartStatus, SetHotkey, GetCurrentHotkey, GetWhatsAppStatus, GetGeminiAPIKey, SetGeminiAPIKey, TranscribeAudio } from '../wailsjs/go/main/App.js';
 import { EventsOn } from '../wailsjs/runtime/runtime.js';
 
 const inputElement = document.getElementById('prompt-input');
@@ -226,6 +226,80 @@ async function checkWhatsAppStatus() {
         whatsappTimeout = setTimeout(checkWhatsAppStatus, 3000);
     }
 }
+
+// --- Voice Commands (MediaRecorder) ---
+let mediaRecorder = null;
+let audioChunks = [];
+const micBtn = document.getElementById('mic-btn');
+
+micBtn.addEventListener('click', async () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        micBtn.classList.remove('recording');
+        return;
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        
+        let options = {};
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+            options = { mimeType: 'audio/webm' };
+        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+            options = { mimeType: 'audio/ogg' };
+        }
+        
+        mediaRecorder = new MediaRecorder(stream, options);
+        
+        mediaRecorder.addEventListener('dataavailable', event => {
+            audioChunks.push(event.data);
+        });
+        
+        mediaRecorder.addEventListener('stop', async () => {
+            stream.getTracks().forEach(track => track.stop());
+            
+            const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+            
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = async () => {
+                const base64Data = reader.result.split(',')[1];
+                
+                appendMessage('user', '🎙️ [Áudio Enviado]');
+                const loadingId = appendMessage('neo', 'Transcrevendo áudio...');
+                
+                try {
+                    const transcription = await TranscribeAudio(base64Data, mediaRecorder.mimeType);
+                    
+                    if (transcription.startsWith('Erro:')) {
+                        updateMessage(loadingId, transcription);
+                        return;
+                    }
+                    
+                    // Update user message with the transcription text
+                    const userMsgs = document.getElementsByClassName('message user');
+                    if (userMsgs.length > 0) {
+                        userMsgs[userMsgs.length - 1].innerText = `🎙️ "${transcription}"`;
+                    }
+                    
+                    // Send to Neo
+                    updateMessage(loadingId, 'Pensando...');
+                    const response = await AskNeo(transcription);
+                    updateMessage(loadingId, response);
+                } catch (err) {
+                    updateMessage(loadingId, `Erro ao processar áudio: ${err}`);
+                }
+            };
+        });
+        
+        mediaRecorder.start();
+        micBtn.classList.add('recording');
+    } catch (err) {
+        console.error('Erro ao acessar microfone:', err);
+        alert('Erro ao acessar o microfone. Verifique suas permissões nas configurações do sistema.');
+    }
+});
 
 window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

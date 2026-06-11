@@ -29,3 +29,5 @@ export function ShowSettings():Promise<void>;
 export function ShowWindow():Promise<void>;
 
 export function ToggleAutoStart(arg1:boolean):Promise<string>;
+
+export function TranscribeAudio(arg1:string,arg2:string):Promise<string>;

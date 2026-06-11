@@ -433,3 +433,107 @@ func (a *App) CheckSingleInstance() {
 		}
 	}()
 }
+
+type GeminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
+}
+
+type GeminiPart struct {
+	InlineData *GeminiInlineData `json:"inlineData,omitempty"`
+	Text       string            `json:"text,omitempty"`
+}
+
+type GeminiContent struct {
+	Parts []GeminiPart `json:"parts"`
+}
+
+type GeminiRequest struct {
+	Contents []GeminiContent `json:"contents"`
+}
+
+type GeminiResponsePart struct {
+	Text string `json:"text"`
+}
+
+type GeminiResponseContent struct {
+	Parts []GeminiResponsePart `json:"parts"`
+}
+
+type GeminiResponseCandidate struct {
+	Content GeminiResponseContent `json:"content"`
+}
+
+type GeminiResponse struct {
+	Candidates []GeminiResponseCandidate `json:"candidates"`
+}
+
+// TranscribeAudio calls Gemini API to transcribe recorded voice commands
+func (a *App) TranscribeAudio(base64Data string, mimeType string) string {
+	apiKey := a.config.GeminiAPIKey
+	if apiKey == "" {
+		// Try to read from system .env if not set in config
+		apiKey = os.Getenv("GEMINI_API_KEY")
+	}
+	if apiKey == "" {
+		return "Erro: GEMINI_API_KEY não configurada. Por favor, adicione sua chave nas Configurações."
+	}
+
+	// Clean mimeType (remove codecs metadata, e.g. "audio/webm;codecs=opus" -> "audio/webm")
+	cleanMimeType := strings.Split(mimeType, ";")[0]
+	cleanMimeType = strings.TrimSpace(cleanMimeType)
+
+	reqPayload := GeminiRequest{
+		Contents: []GeminiContent{
+			{
+				Parts: []GeminiPart{
+					{
+						InlineData: &GeminiInlineData{
+							MimeType: cleanMimeType,
+							Data:     base64Data,
+						},
+					},
+					{
+						Text: "Por favor, transcreva o áudio desta mensagem em português e retorne APENAS o texto da transcrição literal de forma limpa, sem comentários ou explicações.",
+					},
+				},
+			},
+		},
+	}
+
+	payloadBytes, err := json.Marshal(reqPayload)
+	if err != nil {
+		return fmt.Sprintf("Erro interno ao serializar áudio: %v", err)
+	}
+
+	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=%s", apiKey)
+	
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Post(apiURL, "application/json", bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return fmt.Sprintf("Erro ao conectar com API do Gemini: %v", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Sprintf("Erro ao ler resposta de transcrição: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Sprintf("Erro da API Gemini (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var geminiResp GeminiResponse
+	err = json.Unmarshal(bodyBytes, &geminiResp)
+	if err != nil {
+		return fmt.Sprintf("Erro ao decodificar resposta de transcrição: %v", err)
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return "Erro: Nenhuma transcrição gerada pelo Gemini."
+	}
+
+	return strings.TrimSpace(geminiResp.Candidates[0].Content.Parts[0].Text)
+}
+

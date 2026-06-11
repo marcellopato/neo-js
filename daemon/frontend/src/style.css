@@ -62,12 +62,15 @@ html, body {
 #chat-history::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
 
 .input-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     padding: 15px 20px;
     border-top: 1px solid rgba(255,255,255,0.08);
 }
 
 #prompt-input {
-    width: 100%;
+    flex-grow: 1;
     background: transparent;
     border: none;
     outline: none;
@@ -77,6 +80,26 @@ html, body {
     --wails-draggable: no-drag; 
 }
 #prompt-input::placeholder { color: rgba(255,255,255,0.4); }
+
+.mic-btn {
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.mic-btn:hover {
+    color: rgba(255,255,255,0.9);
+}
+.mic-btn.recording {
+    color: #ef4444;
+    animation: mic-pulse 1s infinite alternate;
+}
+@keyframes mic-pulse {
+    from { transform: scale(1); filter: drop-shadow(0 0 0px #ef4444); }
+    to { transform: scale(1.15); filter: drop-shadow(0 0 4px #ef4444); }
+}
 
 .message {
     padding: 12px 16px;
