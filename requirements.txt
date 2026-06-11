@@ -3,4 +3,4 @@ fastapi
 uvicorn
 requests
 python-dotenv
-qdrant-client[fastembed]
+qdrant-client[fastembed]==1.16.1

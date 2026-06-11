@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
-    Distance, VectorParams, PointStruct, Filter,
-    FieldCondition, MatchValue
+    Distance, VectorParams, PointStruct
 )
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
@@ -14,14 +13,19 @@ COLLECTION_NAME = "neo_dialogs"
 VECTOR_SIZE = 384  # BAAI/bge-small-en via fastembed
 
 _client = None
+_embed_model = None  # singleton — loaded once, reused every call
 _collection_ready = False
 
 
-def _get_client() -> QdrantClient:
+def _get_client() -> QdrantClient | None:
     global _client, _collection_ready
     if _client is None:
         try:
-            _client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+            _client = QdrantClient(
+                host=QDRANT_HOST,
+                port=QDRANT_PORT,
+                check_compatibility=False,  # suppress version-mismatch warning
+            )
             _ensure_collection()
             _collection_ready = True
             print(f"[Memory] Connected to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
@@ -41,10 +45,18 @@ def _ensure_collection():
         print(f"[Memory] Created Qdrant collection '{COLLECTION_NAME}'")
 
 
+def _get_embed_model():
+    """Singleton fastembed model — loaded once, zero-cost local embeddings."""
+    global _embed_model
+    if _embed_model is None:
+        from fastembed import TextEmbedding
+        _embed_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        print("[Memory] fastembed model loaded.")
+    return _embed_model
+
+
 def _embed(text: str) -> list[float]:
-    """Generate embedding using fastembed (local, zero API cost)."""
-    from fastembed import TextEmbedding
-    model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+    model = _get_embed_model()
     embeddings = list(model.embed([text]))
     return embeddings[0].tolist()
 
@@ -60,7 +72,7 @@ def store_turn(user_msg: str, neo_response: str, metadata: dict | None = None):
         vector = _embed(combined_text)
 
         payload = {
-            "user": user_msg[:1000],        # cap at 1000 chars
+            "user": user_msg[:1000],
             "neo": neo_response[:1000],
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -88,11 +100,13 @@ def retrieve_relevant_turns(query: str, top_k: int = 3, max_chars_each: int = 40
 
     try:
         vector = _embed(query)
+
+        # Use search() — compatible with qdrant-client 1.16.x
         results = client.search(
             collection_name=COLLECTION_NAME,
             query_vector=vector,
             limit=top_k,
-            score_threshold=0.5,  # ignore low-relevance results
+            score_threshold=0.5,
         )
 
         if not results:
