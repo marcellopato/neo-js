@@ -1,6 +1,8 @@
 # Neo.JS - Seu Assistente Pessoal Sênior de Backpocket 🚀🐳🎙️
 
 ![GitHub repo size](https://img.shields.io/github/repo-size/marcellopato/neo-js?style=for-the-badge&color=25D366)
+![GitHub stars](https://img.shields.io/github/stars/marcellopato/neo-js?style=for-the-badge&color=eab308)
+![GitHub forks](https://img.shields.io/github/forks/marcellopato/neo-js?style=for-the-badge&color=fb923c)
 ![GitHub last commit](https://img.shields.io/github/last-commit/marcellopato/neo-js?style=for-the-badge&color=007aff)
 ![GitHub license](https://img.shields.io/github/license/marcellopato/neo-js?style=for-the-badge&color=5865F2)
 ![GitHub open issues](https://img.shields.io/github/issues/marcellopato/neo-js?style=for-the-badge&color=ef4444)
