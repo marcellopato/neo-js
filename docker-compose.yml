@@ -23,9 +23,12 @@ services:
       - QDRANT_PORT=6333
       - BRIDGE_HOST=bridge
       - PYTHONUNBUFFERED=1
+      - GEMINI_MODEL=gemini-2.5-flash
+      - GOOGLE_MODEL=gemini-2.5-flash
+      - ANTIGRAVITY_MODEL=gemini-2.5-flash
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ~/Documentos/www:/home/marcello/Documentos/www
+      - .:/app
       - ./.chroma_cache:/root/.cache
     depends_on:
       - qdrant

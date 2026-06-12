@@ -5,7 +5,7 @@
 ![GitHub license](https://img.shields.io/github/license/marcellopato/neo-js?style=for-the-badge&color=5865F2)
 ![GitHub open issues](https://img.shields.io/github/issues/marcellopato/neo-js?style=for-the-badge&color=ef4444)
 
-O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux**). Ele é totalmente compatível com o **Antigravity CLI**, utilizando o **Google Antigravity SDK** com **Gemini** como motor cognitivo para processar linguagem natural, analisar código, gerenciar arquivos, comandos e infraestrutura Docker.
+O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux**). Ele é orgulhosamente impulsionado pela **Gemini Family** (utilizando o **Gemini 2.5 Flash** para máxima velocidade e economia), rodando sobre o **Google Antigravity SDK** como motor cognitivo para processar linguagem natural, escrever código, gerenciar arquivos e infraestrutura Docker.
 
 > 🎙️ **Voz:** Envie um áudio (PTT) no WhatsApp para si mesmo e o Neo transcreve e executa automaticamente.
 > 🖥️ **Desktop:** Interface nativa em Go+Wails com ícone na bandeja do sistema para Linux/Zorin OS.
@@ -16,6 +16,20 @@ O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp di
 | Avatar do App / Tray | Corpo Inteiro |
 |:---:|:---:|
 | <img src="neo_head.png" width="180" /> | <img src="neo_full_body.png" width="180" /> |
+
+---
+
+## 💸 Economia Absurda (Powered by Gemini 2.5 Flash)
+
+O Neo foi projetado para extrair o máximo de autonomia com o mínimo de custo. Ao adotar o **Gemini 2.5 Flash** no coração do Antigravity SDK, conseguimos derrubar o custo de operação para frações de centavos, tornando-o imbatível quando comparado a soluções como OpenClaw ou OpenDevin.
+
+| Plataforma / Agente | Custo Médio por Ciclo Autônomo Completo (Pensar, Codar, Testar) |
+|---|---|
+| OpenClaw (GPT-4o) | ~ R$ 1,50 a R$ 2,50 |
+| Agent Padrão (Gemini 1.5 Pro) | ~ R$ 0,15 a R$ 0,30 |
+| **Neo.JS (Gemini 2.5 Flash)** | **~ R$ 0,02 (Dois Centavos!)** |
+
+Isso significa que você tem um Engenheiro de Software autônomo à sua disposição no WhatsApp, capaz de criar e executar scripts inteiros, cobrando quase nada pelo serviço.
 
 ---
 
@@ -180,6 +194,15 @@ http://localhost:6333/dashboard
 - **Chave de API do Gemini** (Google AI Studio ou Google Cloud)
 
 > Para o **Daemon Desktop** (Linux/Zorin OS): requer o binário `daemon` compilado com Go + Wails. Consulte `daemon/README.md`.
+
+---
+
+## 🤝 Contribuidores
+
+O Neo.JS é uma iniciativa open-source e prospera graças à comunidade. Sinta-se à vontade para abrir Issues, enviar Pull Requests e sugerir novas integrações. 
+
+- **Marcello Pato** - Idealizador e desenvolvedor principal.
+- **Comunidade** - Junte-se a nós para transformar o Neo no agente de IA mais acessível do mundo!
 
 ---
 

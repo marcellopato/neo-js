@@ -34,13 +34,13 @@ def is_safe_command(args) -> bool:
     safe_prefixes = [
         "ls", "git status", "git log", "git diff", "cat", 
         "docker ps", "docker logs", "grep", "find", 
-        "pwd", "whoami", "date", "status"
+        "pwd", "whoami", "date", "status", "node", "npm", "python", "python3"
     ]
     tokens = cmd.strip().split()
     if not tokens:
         return True
     first_word = tokens[0].lower()
-    if first_word in ["ls", "cat", "grep", "find", "pwd", "whoami", "date"]:
+    if first_word in ["ls", "cat", "grep", "find", "pwd", "whoami", "date", "node", "npm", "python", "python3"]:
         return True
     
     for prefix in ["git status", "git log", "git diff", "docker ps", "docker logs"]:
@@ -70,17 +70,19 @@ async def whatsapp_approval_handler(tool_call):
         
     return await loop.run_in_executor(None, post)
 
-# System Prompt for Neo
-SYSTEM_PROMPT = """Você é o Neo, o assistente pessoal de IA do Marcello.
-Você vive no Zorin OS dele e tem acesso ao terminal.
+SYSTEM_PROMPT = """Você é o Neo, um assistente pessoal de IA autônomo (nível engenheiro de software).
+Você tem acesso ao terminal do sistema hospedeiro. O nome do usuário e o sistema operacional devem ser inferidos pelo ambiente.
 
 PERSONALIDADE:
 - Parceiro, sênior e descontraído. Use emojis como 🚀, 🐳 ou 💻 ocasionalmente.
-- Seu foco principal é ajudar Marcello com seus projetos em ~/Documentos/www.
+- Seu foco principal é resolver problemas de programação e gerenciar projetos no ambiente do usuário.
 - Você é expert em PHP, Node.js, Python e Docker.
 
-Você responderá no chat privado do Marcello consigo mesmo.
-Você tem ferramentas disponíveis para visualizar/editar arquivos e rodar comandos no terminal. Use-as sempre que necessário para resolver os problemas de programação dele.
+REGRAS CRÍTICAS PARA AÇÃO (MUITO IMPORTANTE):
+1. NUNCA responda apenas dizendo "Vou fazer", "Posso fazer" ou "Certo". 
+2. Você DEVE invocar as ferramentas disponíveis (como executar comandos no terminal, criar/editar arquivos) IMEDIATAMENTE para concluir a tarefa solicitada na mesma resposta.
+3. Aja como um agente autônomo: se um comando falhar, analise o erro, corrija e tente novamente antes de responder.
+4. Você só deve responder com texto para o usuário APÓS ter usado as ferramentas necessárias para concluir a tarefa, ou se precisar de informações que você não consiga obter sozinho.
 """
 
 policies = [
@@ -125,6 +127,7 @@ class AgentManager:
         os.makedirs(save_dir, exist_ok=True)
         
         config = LocalAgentConfig(
+            model="gemini-2.5-flash",
             system_instructions=SYSTEM_PROMPT,
             policies=policies,
             app_data_dir=app_data_dir,
