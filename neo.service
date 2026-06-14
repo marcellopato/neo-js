@@ -1,5 +1,5 @@
 [Unit]
-Description=Neo WhatsApp Assistant Bridge
+Description=Neo AI Assistant Backend (agent.py + bridge.js)
 After=network.target
 
 [Service]
@@ -8,7 +8,9 @@ RemainAfterExit=yes
 User=marcello
 WorkingDirectory=/home/marcello/Documentos/www/Neo.JS
 ExecStart=/home/marcello/Documentos/www/Neo.JS/start.sh
+ExecStop=/bin/bash -c 'kill $(cat /home/marcello/Documentos/www/Neo.JS/backend.pid 2>/dev/null) 2>/dev/null; kill $(cat /home/marcello/Documentos/www/Neo.JS/bridge.pid 2>/dev/null) 2>/dev/null; rm -f /home/marcello/Documentos/www/Neo.JS/backend.pid /home/marcello/Documentos/www/Neo.JS/bridge.pid'
 Environment=NODE_ENV=production
+Environment=HOME=/home/marcello
 
 [Install]
 WantedBy=multi-user.target

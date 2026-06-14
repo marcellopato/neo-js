@@ -22,13 +22,11 @@ def _get_client() -> QdrantClient | None:
     if _client is None:
         try:
             _client = QdrantClient(
-                host=QDRANT_HOST,
-                port=QDRANT_PORT,
-                check_compatibility=False,  # suppress version-mismatch warning
+                path="qdrant_data",
             )
             _ensure_collection()
             _collection_ready = True
-            print(f"[Memory] Connected to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}")
+            print(f"[Memory] Connected to local Qdrant at qdrant_data")
         except Exception as e:
             print(f"[Memory] Failed to connect to Qdrant: {e}")
             _client = None
@@ -101,13 +99,15 @@ def retrieve_relevant_turns(query: str, top_k: int = 3, max_chars_each: int = 40
     try:
         vector = _embed(query)
 
-        # Use search() — compatible with qdrant-client 1.16.x
-        results = client.search(
+        # query_points is the current API in qdrant-client >= 1.13
+        result = client.query_points(
             collection_name=COLLECTION_NAME,
-            query_vector=vector,
+            query=vector,
             limit=top_k,
             score_threshold=0.5,
+            with_payload=True,
         )
+        results = result.points
 
         if not results:
             return ""

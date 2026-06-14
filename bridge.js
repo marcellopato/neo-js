@@ -189,7 +189,7 @@ async function transcribeAudio(base64Data, mimeType) {
     console.log(`[Bridge]: Chamando Gemini API com MIME type: "${cleanMimeType}"`);
 
     const response = await genAI.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-2.5-flash',
         contents: [
             {
                 role: 'user',

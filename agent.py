@@ -179,8 +179,9 @@ agent_manager = AgentManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Starting Antigravity Agent via AgentManager...")
-    await agent_manager.get_agent()
+    # Agent is initialized lazily on first /chat request
+    # This allows the server to start immediately without blocking on WebSocket connection
+    print("Neo backend starting up (agent will initialize on first request)...")
     yield
     print("Shutting down AgentManager...")
     await agent_manager.close()
@@ -204,7 +205,12 @@ async def chat_endpoint(
         else:
             target_api_key = None
 
+        is_first_init = agent_manager.agent is None
+        if is_first_init:
+            print("[Agent] First request: initializing Antigravity Agent...")
         agent_instance = await agent_manager.get_agent(api_key=target_api_key)
+        if is_first_init:
+            print("[Agent] Agent initialized successfully!")
         print(f"[Agent] Received message: {payload.message}")
         
         past_context = retrieve_context(payload.message)

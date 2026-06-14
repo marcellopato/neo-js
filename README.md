@@ -37,7 +37,7 @@ Isso significa que você tem um Engenheiro de Software autônomo à sua disposi�
 
 ## 🏗️ Arquitetura
 
-A arquitetura do Neo é **Dockerizada**, orquestrada via `docker-compose`, com 4 serviços independentes:
+A arquitetura do Neo roda **nativamente**, sem depender de Docker, com serviços independentes:
 
 ```mermaid
 graph TD
@@ -101,7 +101,7 @@ Um **Daemon Desktop** nativo em Go e Wails adiciona uma camada de interface grá
 
 - **🎙️ Comandos por Voz:** Grave um áudio (PTT) no WhatsApp ou no app desktop — o Neo transcreve e executa.
 - **🧠 Memória Semântica RAG:** Lembra conversas relevantes via busca vetorial no Qdrant (sem enviar tudo ao LLM).
-- **🐳 Orquestração Docker:** Gerencia containers, lê logs, executa comandos no terminal.
+- **⚙️ Execução Nativa:** Leve e rápido, roda diretamente no Linux, macOS e Windows sem depender de Docker.
 - **💻 Engenharia de Software:** Expert sênior em PHP (Laravel), Node.js/TypeScript, Python e Flutter/Dart.
 - **🔒 Privacidade:** Processa apenas mensagens do Self-Chat (você para você mesmo).
 
@@ -140,13 +140,23 @@ O instalador interativo configura o `.env`, detecta versões antigas e oferece m
 ```bash
 # 1. Configure o ambiente
 cp .env.example .env
-# Edite .env e preencha: GEMINI_API_KEY, INTERNAL_API_KEY, NEO_PASSWORD
+# Edite .env e preencha as variáveis como GEMINI_API_KEY
 
-# 2. Suba os containers
+# 2. Inicie o sistema
+# O script abaixo cuidará de instalar as dependências de Node e Python e iniciar os processos.
+# No Linux / macOS:
+chmod +x start.sh
 ./start.sh
 
-# 3. Escaneie o QR Code do WhatsApp
-docker compose logs -f bridge
+# No Windows (PowerShell):
+# Certifique-se de ter Node.js e Python instalados.
+python -m venv venv
+.\venv\Scripts\pip install -r requirements.txt
+npm install
+# Inicie o backend:
+start /B .\venv\Scripts\python agent.py
+# Inicie a bridge:
+node bridge.js
 ```
 
 ---
@@ -159,7 +169,7 @@ Se você estava usando uma versão anterior (sem Docker ou com ChromaDB), rode:
 chmod +x migrate.sh && ./migrate.sh
 ```
 
-O script remove caches incompatíveis e reinicializa o Docker. Você precisará escanear o QR Code novamente.
+O script remove caches antigos (caso existam) e prepara o ambiente para rodar nativamente.
 
 ---
 
@@ -169,17 +179,13 @@ O script remove caches incompatíveis e reinicializa o Docker. Você precisará 
 ./start.sh
 ```
 
-Isso sobe todos os containers em modo daemon. Para verificar o status:
+Isso inicia o backend em background e a bridge (Node.js) em foreground.
+No primeiro uso, o QR Code do WhatsApp Web aparecerá direto no seu terminal para você escanear.
 
-```bash
-docker compose ps
-```
-
-Para ver logs em tempo real:
-
-```bash
-docker compose logs -f backend   # Agente Python
-docker compose logs -f bridge    # WhatsApp Bridge
+**No Windows:**
+```powershell
+start /B .\venv\Scripts\python agent.py
+node bridge.js
 ```
 
 Para acessar o **Dashboard de Memória Vetorial**:
@@ -191,8 +197,8 @@ http://localhost:6333/dashboard
 
 ## 📦 Requisitos
 
-- **Docker** + **Docker Compose** (v2+)
-- **Node.js** (apenas para o `install.js` inicial)
+- **Node.js** (v18+)
+- **Python** (v3.10+)
 - **Chave de API do Gemini** (Google AI Studio ou Google Cloud)
 
 > Para o **Daemon Desktop** (Linux/Zorin OS): requer o binário `daemon` compilado com Go + Wails. Consulte `daemon/README.md`.

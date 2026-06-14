@@ -317,7 +317,7 @@ func (a *App) AskNeo(message string) string {
 		return fmt.Sprintf("Erro interno: %v", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 120 * time.Second}
 	req, err := http.NewRequest("POST", "http://127.0.0.1:5000/chat", bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Sprintf("Erro ao conectar com Neo: %v", err)
@@ -506,7 +506,7 @@ func (a *App) TranscribeAudio(base64Data string, mimeType string) string {
 		return fmt.Sprintf("Erro interno ao serializar áudio: %v", err)
 	}
 
-	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=%s", apiKey)
+	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=%s", apiKey)
 	
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Post(apiURL, "application/json", bytes.NewBuffer(payloadBytes))

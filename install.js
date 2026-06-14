@@ -61,24 +61,11 @@ async function main() {
 
     log(`\nPlataforma identificada: ${C.bold}${platform === 'darwin' ? 'macOS (Darwin)' : platform === 'linux' ? 'Linux' : platform}${C.reset}`);
 
-    // Step 0: Check for existing installation (Migration)
+    // Step 0: Check for existing installation
     bold('\nStep 0: Verificando instalações anteriores...', C.yellow);
-    if (fs.existsSync(path.join(__dirname, '.wwebjs_auth')) || fs.existsSync(path.join(__dirname, 'venv'))) {
-        log('⚠ ATENÇÃO: Detectamos uma instalação antiga do Neo.JS nesta pasta.', C.red);
-        log('O Neo foi atualizado para uma nova arquitetura ultra-estável baseada em Docker.', C.cyan);
-        log('Se prosseguirmos, sua sessão antiga será limpa e você precisará escanear o QR Code novamente.', C.yellow);
-        const migrateChoice = await question('Deseja executar o processo de migração agora? (s/n): ');
-        if (migrateChoice.trim().toLowerCase() === 's') {
-            log('Iniciando o script de migração...', C.green);
-            try {
-                execSync('chmod +x migrate.sh && ./migrate.sh', { stdio: 'inherit' });
-            } catch (e) {
-                log('Falha ao rodar o script de migração. Execute manualmente: ./migrate.sh', C.red);
-            }
-            process.exit(0);
-        } else {
-            log('Continuando com o processo padrão de instalação (apenas para Docker)...', C.cyan);
-        }
+    if (fs.existsSync(path.join(__dirname, '.wwebjs_auth'))) {
+        log('⚠ ATENÇÃO: Detectamos uma sessão anterior do WhatsApp nesta pasta.', C.yellow);
+        log('Sua sessão será preservada — você não precisará escanear o QR Code novamente.', C.green);
     }
 
     // Step 1: Check environment dependencies
@@ -226,8 +213,30 @@ async function main() {
             }
         }
     } else if (isLinux) {
-        log('No Linux, você pode usar o arquivo systemd (neo.service) fornecido no projeto.', C.cyan);
-        log('Siga as instruções de persistência do README.md para ativá-lo.', C.cyan);
+        log('No Linux, você pode usar o systemd (neo.service) para iniciar o Neo automaticamente.', C.cyan);
+        const installService = await question('Deseja configurar o neo.service no systemd agora? (Requer sudo) (s/n): ');
+        if (installService.trim().toLowerCase() === 's') {
+            const projectDir = __dirname;
+            // Atualiza o WorkingDirectory e ExecStart com o caminho real do projeto
+            let serviceContent = fs.readFileSync(path.join(projectDir, 'neo.service'), 'utf8');
+            serviceContent = serviceContent
+                .replace(/WorkingDirectory=.*/g, `WorkingDirectory=${projectDir}`)
+                .replace(/ExecStart=.*/g, `ExecStart=${projectDir}/start.sh`)
+                .replace(/ExecStop=.*\n/g, `ExecStop=/bin/bash -c 'kill $(cat ${projectDir}/backend.pid 2>/dev/null) 2>/dev/null; kill $(cat ${projectDir}/bridge.pid 2>/dev/null) 2>/dev/null; rm -f ${projectDir}/backend.pid ${projectDir}/bridge.pid'\n`);
+            const tmpService = `/tmp/neo-install.service`;
+            fs.writeFileSync(tmpService, serviceContent);
+            try {
+                execSync(`sudo cp ${tmpService} /etc/systemd/system/neo.service && sudo systemctl daemon-reload && sudo systemctl enable neo && sudo systemctl start neo`, { stdio: 'inherit' });
+                log('\n✅ Neo configurado como serviço systemd e iniciado!', C.green);
+                log('Comandos úteis:', C.cyan);
+                log('  sudo systemctl status neo    # Ver status', C.bold);
+                log('  sudo systemctl restart neo   # Reiniciar', C.bold);
+                log('  sudo systemctl stop neo      # Parar', C.bold);
+            } catch (err) {
+                log(`✗ Falha ao configurar o serviço: ${err.message}`, C.red);
+                log('Execute manualmente: sudo cp neo.service /etc/systemd/system/ && sudo systemctl enable --now neo', C.yellow);
+            }
+        }
     }
 
     // End Installer
