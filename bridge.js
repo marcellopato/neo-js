@@ -26,6 +26,10 @@ function withTimeout(promise, timeoutMs, errorMessage) {
 // Start WhatsApp Client
 const client = new Client({
     authStrategy: new LocalAuth(),
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1042542308-alpha.html',
+    },
     puppeteer: { 
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
@@ -48,6 +52,16 @@ client.on('qr', qr => {
     currentQR = qr;
 });
 
+client.on('auth_failure', async msg => {
+    console.error('\n[Bridge] FALHA NA AUTENTICAÇÃO:', msg);
+    await triggerNeoAutoUpdate('Falha na autenticação (auth_failure)');
+});
+
+client.on('disconnected', async (reason) => {
+    console.log('\n[Bridge] Cliente desconectado:', reason);
+    await triggerNeoAutoUpdate(`Cliente desconectado (reason: ${reason})`);
+});
+
 client.on('ready', () => {
     console.log('\n[✓] Bridge do WhatsApp está ONLINE!');
     console.log('ID Logado:', client.info.wid._serialized);
@@ -61,11 +75,18 @@ client.on('ready', () => {
                 await withTimeout(client.pupPage.evaluate('1'), 15000, 'Browser congelado');
             }
         } catch (e) {
-            console.error('\n[Watchdog] ⚠️ Browser não respondeu. Forçando reinício para o systemd recuperar o serviço...');
-            process.exit(1);
+            console.error('\n[Watchdog] ⚠️ Browser não respondeu. Acionando Auto-Healing...');
+            await triggerNeoAutoUpdate('Browser congelado / watchdog timeout');
+            setTimeout(() => process.exit(1), 10000);
         }
     }, 60000);
 });
+
+async function triggerNeoAutoUpdate(reason) {
+    const prompt = `[ALERTA DO SISTEMA] A bridge do WhatsApp falhou ao iniciar ou se desconectou de forma anormal. Motivo: ${reason}. Isso geralmente acontece quando o WhatsApp Web atualiza e a biblioteca fica desatualizada. Por favor, execute o comando 'npm install github:pedroslopez/whatsapp-web.js#main' para atualizar a biblioteca e, em seguida, reinicie o sistema usando './start.sh'.`;
+    console.log(`\n[Auto-Healing] Enviando solicitação de reparo para o Neo. Motivo: ${reason}`);
+    await forwardToAgent(prompt, "system");
+}
 
 client.on('message_create', async (msg) => {
     console.log(`[DEBUG] Msg: tipo=${msg.type}, fromMe=${msg.fromMe}, from=${msg.from}, to=${msg.to}, hasMedia=${msg.hasMedia}, body="${msg.body || ''}"`);
@@ -246,7 +267,11 @@ async function forwardToAgent(text, chatId) {
                     const data = JSON.parse(body);
                     const agentResponse = data.response;
                     lastAgentMessage = agentResponse;
-                    await sendBridgeMessage(chatId, agentResponse);
+                    if (chatId === "system") {
+                        console.log(`\n[Neo Auto-Healing Response]: ${agentResponse}`);
+                    } else {
+                        await sendBridgeMessage(chatId, agentResponse);
+                    }
                 } else {
                     const errDetail = body || `Status Code ${res.statusCode}`;
                     throw new Error(errDetail);
@@ -346,4 +371,9 @@ const shutdown = async (signal) => {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
-client.initialize();
+client.initialize().catch(async err => {
+    console.error('\n[Bridge] Erro fatal na inicialização:', err);
+    if (err.message.includes('timeout') || err.message.includes('browser') || err.message.includes('Evaluation failed')) {
+         await triggerNeoAutoUpdate(err.message);
+    }
+});

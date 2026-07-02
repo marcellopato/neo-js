@@ -103,6 +103,8 @@ Um **Daemon Desktop** nativo em Go e Wails adiciona uma camada de interface grá
 - **🧠 Memória Semântica RAG:** Lembra conversas relevantes via busca vetorial no Qdrant (sem enviar tudo ao LLM).
 - **⚙️ Execução Nativa:** Leve e rápido, roda diretamente no Linux, macOS e Windows sem depender de Docker.
 - **💻 Engenharia de Software:** Expert sênior em PHP (Laravel), Node.js/TypeScript, Python e Flutter/Dart.
+- **🛡️ Auto-Reparo (Self-Healing):** A bridge do WhatsApp atua como um sensor. Se o WhatsApp Web for atualizado e quebrar a conexão, o Neo detecta a falha, atualiza sua própria biblioteca (`whatsapp-web.js`) e reinicia de forma 100% autônoma!
+- **🗜️ Headroom Proxy Integrado:** Otimização avançada de tokens interceptando a comunicação da SDK e comprimindo os prompts antes de chegar no Google Gemini, garantindo máxima economia no longo prazo.
 - **🔒 Privacidade:** Processa apenas mensagens do Self-Chat (você para você mesmo).
 
 ---
