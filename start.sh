@@ -32,9 +32,9 @@ if [ -f "$SCRIPT_DIR/bridge.pid" ]; then
     rm -f "$SCRIPT_DIR/bridge.pid"
 fi
 
-# Inicia o backend Python com setsid (desvincula do terminal)
+# Inicia o backend Python com nohup (desvincula do terminal)
 echo "[Start] Iniciando backend (agent.py)..."
-setsid ./venv/bin/python agent.py >> backend.log 2>&1 &
+nohup ./venv/bin/python agent.py >> backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > "$SCRIPT_DIR/backend.pid"
 
@@ -61,7 +61,7 @@ fi
 
 # Inicia a bridge Node.js com setsid
 echo "[Start] Iniciando bridge (bridge.js)..."
-setsid node bridge.js >> output.log 2>&1 &
+nohup /home/marcello/.nvm/versions/node/v22.21.1/bin/node bridge.js >> output.log 2>&1 &
 BRIDGE_PID=$!
 echo $BRIDGE_PID > "$SCRIPT_DIR/bridge.pid"
 

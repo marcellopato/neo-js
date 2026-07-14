@@ -100,6 +100,7 @@ Um **Daemon Desktop** nativo em Go e Wails adiciona uma camada de interface grá
 ## 🛠️ Habilidades Principais
 
 - **🎙️ Comandos por Voz:** Grave um áudio (PTT) no WhatsApp ou no app desktop — o Neo transcreve e executa.
+- **🗣️ Síntese de Voz (TTS) Modular:** O Neo pode responder com áudio no WhatsApp! O sistema atual usa `gTTS` como fallback para respostas rápidas, mas a arquitetura em `tts_engine.py` já foi preparada para receber modelos de clonagem locais (ex: XTTS/Coqui TTS). **Colaboradores são bem-vindos para dar continuidade à integração de `.voicebox.zip` e outros motores pesados!**
 - **🧠 Memória Semântica RAG:** Lembra conversas relevantes via busca vetorial no Qdrant (sem enviar tudo ao LLM).
 - **⚙️ Execução Nativa:** Leve e rápido, roda diretamente no Linux, macOS e Windows sem depender de Docker.
 - **💻 Engenharia de Software:** Expert sênior em PHP (Laravel), Node.js/TypeScript, Python e Flutter/Dart.

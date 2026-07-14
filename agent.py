@@ -12,6 +12,7 @@ load_dotenv()
 from google.antigravity import Agent, LocalAgentConfig, types
 from google.antigravity.hooks import policy
 from memory import store_memory, retrieve_context
+from tts_engine import generate_audio
 
 class ChatPayload(BaseModel):
     message: str
@@ -245,8 +246,15 @@ async def chat_endpoint(
         
         store_memory(payload.message, reply_text)
         
+        # Gerar áudio
+        audio_file = None
+        try:
+            audio_file = generate_audio(reply_text)
+        except Exception as e:
+            print(f"[Agent] Erro ao gerar áudio: {e}")
+        
         print(f"[Agent] Response generated: {reply_text[:100]}...")
-        return {"response": reply_text}
+        return {"response": reply_text, "audio_file": audio_file}
     except Exception as e:
         print(f"[Agent] Error during chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))

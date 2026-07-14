@@ -1,7 +1,8 @@
 require('dotenv').config();
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const http = require('http');
+const fs = require('fs');
 const { GoogleGenAI } = require('@google/genai');
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -77,6 +78,7 @@ client.on('ready', () => {
         } catch (e) {
             console.error('\n[Watchdog] ⚠️ Browser não respondeu. Acionando Auto-Healing...');
             await triggerNeoAutoUpdate('Browser congelado / watchdog timeout');
+            try { await client.destroy(); } catch(err) {}
             setTimeout(() => process.exit(1), 10000);
         }
     }, 60000);
@@ -266,11 +268,24 @@ async function forwardToAgent(text, chatId) {
                 if (res.statusCode === 200) {
                     const data = JSON.parse(body);
                     const agentResponse = data.response;
+                    const audioFile = data.audio_file;
                     lastAgentMessage = agentResponse;
                     if (chatId === "system") {
                         console.log(`\n[Neo Auto-Healing Response]: ${agentResponse}`);
                     } else {
+                        // Send text response
                         await sendBridgeMessage(chatId, agentResponse);
+                        
+                        // Send audio if available
+                        if (audioFile && fs.existsSync(audioFile)) {
+                            console.log(`[Bridge] Enviando áudio gerado: ${audioFile}`);
+                            try {
+                                const media = MessageMedia.fromFilePath(audioFile);
+                                await client.sendMessage(chatId, media, { sendAudioAsVoice: true });
+                            } catch (err) {
+                                console.error('[Bridge] Erro ao enviar áudio:', err.message);
+                            }
+                        }
                     }
                 } else {
                     const errDetail = body || `Status Code ${res.statusCode}`;
@@ -373,7 +388,8 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 client.initialize().catch(async err => {
     console.error('\n[Bridge] Erro fatal na inicialização:', err);
-    if (err.message.includes('timeout') || err.message.includes('browser') || err.message.includes('Evaluation failed')) {
-         await triggerNeoAutoUpdate(err.message);
+    const errMsg = err?.message || err || '';
+    if (typeof errMsg === 'string' && (errMsg.includes('timeout') || errMsg.includes('browser') || errMsg.includes('Evaluation failed'))) {
+         await triggerNeoAutoUpdate(errMsg);
     }
 });
