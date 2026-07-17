@@ -1,0 +1,5 @@
+0000000000000000000000000000000000000000 be8344d2529624cf73d646b50d0d17f37773fdf1 marcellopatoAI <marcello@halai.com.br> 1784042185 -0300	commit (initial): feat: adicionar arquitetura modular de síntese de voz (TTS) e auto-restart
+be8344d2529624cf73d646b50d0d17f37773fdf1 be8344d2529624cf73d646b50d0d17f37773fdf1 marcellopatoAI <marcello@halai.com.br> 1784042185 -0300	Branch: renamed refs/heads/master to refs/heads/main
+be8344d2529624cf73d646b50d0d17f37773fdf1 39640b005512459abfd205501b1c7d02ef8e605a marcellopatoAI <marcello@halai.com.br> 1784042204 -0300	reset: moving to origin/main
+39640b005512459abfd205501b1c7d02ef8e605a 0573615a7095fe4ee9b5310f52905d45bac4b38b marcellopatoAI <marcello@halai.com.br> 1784042204 -0300	commit: feat: adicionar arquitetura modular de síntese de voz (TTS) e auto-restart
+0573615a7095fe4ee9b5310f52905d45bac4b38b 4c5355b8069b21a52cfb63c5773e9c172a967c03 marcellopatoAI <marcello@halai.com.br> 1784300554 -0300	commit: Clean up Wails templates and add new files

@@ -1,0 +1,13 @@
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+.env
+*.log
+venv/
+vendor/
+chroma_data/
+__pycache__/
+.chroma_cache/
+qdrant_data/
+backend.pid
+bridge.pid
