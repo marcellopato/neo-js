@@ -1,13 +1,27 @@
 import os
+import glob
 from gtts import gTTS
 import uuid
 
 # Configuration
 USE_VOICE = os.getenv("NEO_VOICE_ENABLED", "true").lower() == "true"
 AUDIO_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "audio_cache")
+MAX_AUDIO_FILES = 50  # keep at most this many cached audio files
 
 if not os.path.exists(AUDIO_OUTPUT_DIR):
     os.makedirs(AUDIO_OUTPUT_DIR)
+
+def _cleanup_old_audio():
+    """Remove oldest audio files beyond MAX_AUDIO_FILES to prevent unbounded growth."""
+    pattern = os.path.join(AUDIO_OUTPUT_DIR, "neo_voice_*.ogg")
+    files = sorted(glob.glob(pattern), key=os.path.getmtime)
+    while len(files) > MAX_AUDIO_FILES:
+        oldest = files.pop(0)
+        try:
+            os.remove(oldest)
+            print(f"[TTS] Removido áudio antigo: {oldest}")
+        except OSError as e:
+            print(f"[TTS] Erro ao remover {oldest}: {e}")
 
 def generate_audio(text: str) -> str:
     """
@@ -17,6 +31,9 @@ def generate_audio(text: str) -> str:
     if not USE_VOICE:
         return None
         
+    # Clean up old files before generating new one
+    _cleanup_old_audio()
+    
     clean_text = text.replace('*', '').replace('_', '')
     
     filename = f"neo_voice_{uuid.uuid4().hex[:8]}.ogg"

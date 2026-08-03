@@ -61,7 +61,9 @@ fi
 
 # Inicia a bridge Node.js com setsid
 echo "[Start] Iniciando bridge (bridge.js)..."
-nohup /home/marcello/.nvm/versions/node/v22.21.1/bin/node bridge.js >> output.log 2>&1 &
+# Use node from PATH (portable across machines/Node versions)
+NODE_CMD=$(command -v node 2>/dev/null || command -v nodejs 2>/dev/null || echo "node")
+nohup "$NODE_CMD" bridge.js >> output.log 2>&1 &
 BRIDGE_PID=$!
 echo $BRIDGE_PID > "$SCRIPT_DIR/bridge.pid"
 

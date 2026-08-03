@@ -29,7 +29,6 @@ type Config struct {
 
 var currentHotkey *hotkey.Hotkey
 var autostartApp *autostart.App
-var configFilePath string
 
 //go:embed icon.png
 var neoIcon []byte
