@@ -9,9 +9,12 @@ const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 let lastAgentMessage = "";
 let pendingAsk = null; // { resolve, timer, command }
-let isLocked = true; // Bot starts locked
+let isLocked = false; // Bot starts unlocked (self-chat, senha removida)
 let currentQR = null;
 let isConnected = false;
+
+const TEMP_DIR = '/tmp/neo-bridge-audio'; // Temp dir for audio files
+if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 function withTimeout(promise, timeoutMs, errorMessage) {
     let timeoutId;
@@ -39,6 +42,11 @@ const client = new Client({
 });
 
 async function sendBridgeMessage(chatId, text) {
+    // Guard: if WhatsApp client isn't ready yet, log warning and skip
+    if (!client.info || !client.info.wid || !client.info.wid._serialized) {
+        console.error(`[Bridge] Cannot send message: WhatsApp client not ready yet (chatId=${chatId})`);
+        throw new Error('WhatsApp client not initialized');
+    }
     const isSelfChat = chatId === client.info.wid._serialized || 
                        chatId.includes('16174981058753') || 
                        chatId.includes('228191662801065');
@@ -46,6 +54,16 @@ async function sendBridgeMessage(chatId, text) {
         lastAgentMessage = text;
     }
     return await client.sendMessage(chatId, text);
+}
+
+async function sendReaction(msg, emoji) {
+    try {
+        if (msg && typeof msg.react === 'function') {
+            await msg.react(emoji);
+        }
+    } catch (e) {
+        console.log(`[Bridge] Reaction ${emoji} not supported (non-critical): ${e.message}`);
+    }
 }
 
 client.on('qr', qr => {
@@ -102,15 +120,16 @@ client.on('message_create', async (msg) => {
         body.startsWith('🎙️ *Transcrição:*') || 
         body.startsWith('⚠️ *Erro') || 
         body.startsWith('❌ Comando') || 
-        body.startsWith('⏰ *Tempo de resposta')) {
+        body.startsWith('⏰ *Tempo de resposta') ||
+        body.startsWith('💻') ||
+        body.startsWith('⏳')) {
         console.log(`[Bridge] Ignorando mensagem do sistema/bridge para evitar loops: "${body}"`);
         return;
     }
     
-    // Self-Chat filter: verifica dinamicamente se o contato do chat é o próprio usuário, e usa fallback para IDs conhecidos pois o isMe pode falhar em LIDs
+    // Self-Chat filter: verifica dinamicamente se o contato do chat é o próprio usuário
     let isSelfChat = false;
     if (isFromMe && !isGroup) {
-        // Tenta pela API (pode não funcionar para LIDs devido à forma como o whatsapp-web.js compara internamente)
         try {
             const contact = await client.getContactById(msg.to);
             isSelfChat = (contact && contact.isMe === true);
@@ -118,7 +137,6 @@ client.on('message_create', async (msg) => {
             console.error('[Bridge DEBUG] Erro ao obter contato:', e.message);
         }
         
-        // Se a API falhou em identificar (comum com LIDs), tenta os fallbacks de forma garantida
         if (!isSelfChat) {
             isSelfChat = msg.to === client.info.wid._serialized || 
                          msg.to.includes('16174981058753') || 
@@ -129,26 +147,45 @@ client.on('message_create', async (msg) => {
     if (isFromMe && isSelfChat && !isGroup) {
         if ((msg.type === 'voice' || msg.type === 'audio' || msg.type === 'ptt') && msg.hasMedia) {
              console.log('[Bridge]: Mensagem de áudio recebida! Baixando mídia...');
+             await sendReaction(msg, '⏳');
+             let audioMedia = null;
              try {
-                 // Limita o tempo de download a 30s para evitar travamento do Puppeteer
-                 const media = await withTimeout(msg.downloadMedia(), 30000, 'Tempo limite esgotado ao baixar o áudio do WhatsApp.');
-                 if (media && media.data) {
-                     console.log('[Bridge]: Transcrevendo áudio com o Gemini...');
-                     const transcription = await transcribeAudio(media.data, media.mimetype);
-                     console.log(`[Bridge]: Áudio transcrito: "${transcription}"`);
-
-                     // Envia a confirmação de transcrição gráfica no chat do WhatsApp
-                     await sendBridgeMessage(msg.to, `🎙️ *Transcrição:* "${transcription}"`);
-
-                     // Prossegue enviando a transcrição ao agente
-                     await forwardToAgent(transcription, msg.to);
+                 audioMedia = await withTimeout(msg.downloadMedia(), 30000, 'Tempo limite esgotado ao baixar o áudio do WhatsApp.');
+                 if (audioMedia && audioMedia.data) {
+                     console.log('[Bridge]: Enviando áudio para o backend Python processar...');
+                     const transcription = await transcribeAudioViaBackend(audioMedia, msg.to);
+                     if (transcription) {
+                         console.log(`[Bridge]: Áudio transcrito: "${transcription.substring(0, 100)}..."`);
+                         await sendBridgeMessage(msg.to, `🎙️ *Transcrição:* "${transcription}"`);
+                         await forwardToAgent(transcription, msg.to);
+                         await sendReaction(msg, '✅');
+                         return;
+                     } else {
+                         throw new Error('Transcrição retornou vazia');
+                     }
                  } else {
-                     console.error('[Bridge]: Falha ao obter dados do áudio (media ou media.data está nulo/indefinido)');
-                     await sendBridgeMessage(msg.to, '⚠️ *Erro ao processar áudio:* Não foi possível baixar o arquivo de mídia.');
+                     throw new Error('Falha ao baixar mídia do áudio');
                  }
              } catch (mediaErr) {
-                 console.error('[Erro de áudio]:', mediaErr.message);
-                 await sendBridgeMessage(msg.to, `⚠️ *Erro ao processar áudio:* ${mediaErr.message}`);
+                 console.error('[Erro de áudio]:', mediaErr);
+                 await sendReaction(msg, '❌');
+                 // Fallback: tentar com o JS SDK direto (reuse audioMedia if downloaded)
+                 try {
+                     console.log('[Bridge] Tentando fallback JS SDK...');
+                     const fbMedia = audioMedia && audioMedia.data ? audioMedia : await msg.downloadMedia();
+                     if (fbMedia && fbMedia.data) {
+                         const transcription = await transcribeAudio(fbMedia.data, fbMedia.mimetype);
+                         if (transcription) {
+                             await sendBridgeMessage(msg.to, `🎙️ *Transcrição:* "${transcription}"`);
+                             await forwardToAgent(transcription, msg.to);
+                             await sendReaction(msg, '✅');
+                             return;
+                         }
+                     }
+                 } catch (fallbackErr) {
+                     console.error('[Bridge] Fallback JS SDK também falhou:', fallbackErr);
+                 }
+                 await sendBridgeMessage(msg.to, `⚠️ *Erro ao processar áudio:* Não foi possível transcrever. Tente enviar texto. (${mediaErr.message || 'erro'})`);
              }
         } else if (msg.body && msg.body !== lastAgentMessage) {
             console.log(`\n[Bridge] Mensagem recebida no chat privado: ${msg.body}`);
@@ -167,7 +204,6 @@ client.on('message_create', async (msg) => {
                     await sendBridgeMessage(msg.to, '🔓 Neo destravado! Pronto para os comandos.');
                     return;
                 }
-                // Do not respond to anything else while locked
                 return;
             }
 
@@ -183,65 +219,251 @@ client.on('message_create', async (msg) => {
                     console.log("[Bridge] User approved command!");
                     clearTimeout(pendingAsk.timer);
                     pendingAsk.resolve(true);
-                    lastAgentMessage = msg.body; // Prevent forwarding "sim" to the agent
+                    pendingAsk = null;
+                    lastAgentMessage = msg.body;
                     return;
                 } else if (/^n(ão|ao)$|^no$|^n$/i.test(msgLower)) {
                     console.log("[Bridge] User denied command.");
                     clearTimeout(pendingAsk.timer);
                     pendingAsk.resolve(false);
-                    lastAgentMessage = msg.body; // Prevent forwarding "não" to the agent
+                    pendingAsk = null;
+                    lastAgentMessage = msg.body;
                     await sendBridgeMessage(msg.to, "❌ Comando cancelado.");
                     return;
                 }
             }
             
-            // 2. Forward to Python agent
+            // 2. Forward to Python agent (try streaming first, fallback to sync)
             try {
-                await forwardToAgent(msg.body, msg.to);
+                await forwardToAgentStream(msg, msg.body, msg.to);
             } catch (err) {
-                console.error('[Bridge] Error in forwardToAgent:', err);
-                await sendBridgeMessage(msg.to, `⚠️ *Erro de comunicação com o Agente:* ${err.message}`);
+                console.error('[Bridge] Stream error, falling back to sync:', err.message);
+                try {
+                    await forwardToAgent(msg.body, msg.to);
+                } catch (fallbackErr) {
+                    console.error('[Bridge] Sync fallback also failed:', fallbackErr);
+                    await sendBridgeMessage(msg.to, `⚠️ *Erro de comunicação:* ${fallbackErr.message}`);
+                }
             }
         }
     }
 });
 
+// ── Streaming helper ─────────────────────────────────────────────────────────
+async function forwardToAgentStream(userMsg, text, chatId) {
+    const postData = JSON.stringify({ message: text });
+
+    return new Promise((resolve, reject) => {
+        const options = {
+            hostname: process.env.BACKEND_HOST || '127.0.0.1',
+            port: 5000,
+            path: '/chat/stream',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData),
+                'X-Neo-Token': process.env.INTERNAL_API_KEY
+            },
+            timeout: 600000 // 10 minutes
+        };
+
+        const req = http.request(options, (res) => {
+            if (res.statusCode !== 200) {
+                let errBody = '';
+                res.on('data', chunk => errBody += chunk);
+                res.on('end', () => reject(new Error(errBody || `HTTP ${res.statusCode}`)));
+                return;
+            }
+
+            let accumulated = '';
+            let statusMsg = null;
+            let processedChars = 0;
+            let streamFinished = false;
+            const CHUNK_INTERVAL = 120;
+
+            // Send immediate reaction
+            sendReaction(userMsg, '⏳');
+
+            res.on('data', async (chunk) => {
+                const text = chunk.toString();
+                const lines = text.split('\n');
+                
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        
+                        if (data.status === 'thinking') {
+                            sendReaction(userMsg, '💭');
+                            
+                        } else if (data.status === 'executing') {
+                            sendReaction(userMsg, '⚡');
+                            const detail = data.detail || '';
+                            // Send a brief status update (avoid duplicates for same command)
+                            if (detail && detail !== statusMsg) {
+                                statusMsg = detail;
+                                const cmdShort = detail.length > 60 ? detail.substring(0, 57) + '...' : detail;
+                                await sendBridgeMessage(chatId, `💻 ${cmdShort}`);
+                            }
+                            
+                        } else if (data.chunk) {
+                            accumulated += data.chunk;
+                            processedChars += data.chunk.length;
+                            // Send intermediate update every CHUNK_INTERVAL chars
+                            if (processedChars >= CHUNK_INTERVAL) {
+                                processedChars = 0;
+                                // Don't send every chunk — just update reaction to show progress
+                                sendReaction(userMsg, '✍️');
+                            }
+                            
+                        } else if (data.error) {
+                            accumulated += `\n\n⚠️ ${data.error}`;
+                            
+                        } else if (data.done) {
+                            // Stream complete — send final response
+                            streamFinished = true;
+                            if (accumulated) {
+                                lastAgentMessage = accumulated;
+                                await sendBridgeMessage(chatId, accumulated);
+                                await sendReaction(userMsg, '✅');
+                            }
+                            resolve();
+                        }
+                    } catch (e) {
+                        // Skip malformed JSON lines
+                    }
+                }
+            });
+
+            res.on('end', async () => {
+                // If stream didn't finish via 'done' event but we have text
+                if (!streamFinished && accumulated && lastAgentMessage !== accumulated) {
+                    lastAgentMessage = accumulated;
+                    await sendBridgeMessage(chatId, accumulated);
+                    await sendReaction(userMsg, '✅');
+                }
+                resolve();
+            });
+
+            res.on('error', (e) => {
+                reject(new Error(`Stream error: ${e.message}`));
+            });
+        });
+
+        req.on('error', (e) => reject(new Error(`Connection error: ${e.message}`)));
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+        
+        req.write(postData);
+        req.end();
+    });
+}
+
 async function transcribeAudio(base64Data, mimeType) {
-    // Remove parâmetros do MIME type (ex: "; codecs=opus") que causam INVALID_ARGUMENT no Gemini
     const cleanMimeType = mimeType.split(';')[0].trim();
     console.log(`[Bridge]: Chamando Gemini API com MIME type: "${cleanMimeType}"`);
 
-    const response = await genAI.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
-            {
-                role: 'user',
-                parts: [
-                    {
-                        inlineData: {
-                            data: base64Data,
-                            mimeType: cleanMimeType
+    try {
+        const response = await genAI.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        {
+                            inlineData: {
+                                data: base64Data,
+                                mimeType: cleanMimeType
+                            }
+                        },
+                        {
+                            text: "Por favor, transcreva o áudio desta mensagem em português e retorne APENAS o texto da transcrição literal de forma limpa, sem comentários ou explicações."
                         }
-                    },
-                    {
-                        text: "Por favor, transcreva o áudio desta mensagem em português e retorne APENAS o texto da transcrição literal de forma limpa, sem comentários ou explicações."
-                    }
-                ]
-            }
-        ]
+                    ]
+                }
+            ]
+        });
+
+        if (
+            !response ||
+            !response.candidates ||
+            !response.candidates[0] ||
+            !response.candidates[0].content ||
+            !response.candidates[0].content.parts ||
+            !response.candidates[0].content.parts[0]
+        ) {
+            console.error('[Bridge/Transcribe] Resposta inválida do Gemini:', {
+                hasCandidates: !!response?.candidates,
+                candidatesCount: response?.candidates?.length,
+                finishReason: response?.candidates?.[0]?.finishReason,
+                promptFeedback: response?.promptFeedback,
+            });
+            throw new Error('Resposta vazia ou bloqueada do Gemini');
+        }
+
+        const text = response.candidates[0].content.parts[0].text || '';
+        return text.trim();
+    } catch (transcribeErr) {
+        // Log completo SEM truncamento
+        console.error('=== [Bridge/Transcribe] ERRO DETALHADO ===');
+        console.error('Name:', transcribeErr.name);
+        console.error('Message:', transcribeErr.message);
+        console.error('Status:', transcribeErr.status);
+        console.error('Code:', transcribeErr.code);
+        console.error('MIME type:', cleanMimeType);
+        console.error('Audio data length:', base64Data?.length);
+        console.error('Stack trace:');
+        console.error(transcribeErr.stack || '(sem stack)');
+        console.error('=== FIM DO ERRO ===');
+        throw transcribeErr; // Re-throw for the outer handler
+    }
+}
+
+// ── Audio transcription via Python backend ──────────────────────────────────
+async function transcribeAudioViaBackend(media, chatId) {
+    if (!media || !media.data) throw new Error('Media data is empty');
+
+    const postData = JSON.stringify({
+        data: media.data,
+        mimeType: media.mimetype || 'audio/ogg',
     });
 
-    if (
-        !response.candidates ||
-        !response.candidates[0] ||
-        !response.candidates[0].content ||
-        !response.candidates[0].content.parts ||
-        !response.candidates[0].content.parts[0]
-    ) {
-        throw new Error('Não foi possível obter a transcrição do Gemini (resposta vazia ou bloqueada).');
-    }
+    return new Promise((resolve, reject) => {
+        const options = {
+            hostname: process.env.BACKEND_HOST || '127.0.0.1',
+            port: 5000,
+            path: '/transcribe',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData),
+                'X-Neo-Token': process.env.INTERNAL_API_KEY
+            },
+            timeout: 60000,
+        };
 
-    return response.candidates[0].content.parts[0].text.trim();
+        const req = http.request(options, (res) => {
+            let body = '';
+            res.on('data', chunk => body += chunk);
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    try {
+                        const data = JSON.parse(body);
+                        resolve(data.transcription || data.text || '');
+                    } catch (e) {
+                        reject(new Error('Invalid JSON response: ' + body.substring(0, 100)));
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${body.substring(0, 200)}`));
+                }
+            });
+        });
+
+        req.on('error', (e) => reject(new Error(`Connection error: ${e.message}`)));
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+        req.write(postData);
+        req.end();
+    });
 }
 
 async function forwardToAgent(text, chatId) {
@@ -273,10 +495,8 @@ async function forwardToAgent(text, chatId) {
                     if (chatId === "system") {
                         console.log(`\n[Neo Auto-Healing Response]: ${agentResponse}`);
                     } else {
-                        // Send text response
                         await sendBridgeMessage(chatId, agentResponse);
                         
-                        // Send audio if available
                         if (audioFile && fs.existsSync(audioFile)) {
                             console.log(`[Bridge] Enviando áudio gerado: ${audioFile}`);
                             try {
@@ -323,24 +543,34 @@ const server = http.createServer((req, res) => {
                 const { command } = JSON.parse(body);
                 console.log(`[Bridge] Requesting approval for command: ${command}`);
                 
-                // Cancel existing pending ask if any
                 if (pendingAsk) {
                     clearTimeout(pendingAsk.timer);
                     pendingAsk.resolve(false);
                     pendingAsk = null;
                 }
                 
-                const askMsg = `⚠️ *Neo solicita permissão para rodar o comando:*\n\`\`\`${command}\`\`\`\n\nResponda com *sim* ou *não*.`;
+                if (!client.info || !client.info.wid || !client.info.wid._serialized) {
+                    res.writeHead(503, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ error: 'WhatsApp client not initialized' }));
+                }
                 const selfChatId = client.info.wid._serialized;
+                const askMsg = `⚠️ *Neo solicita permissão para rodar o comando:*\n\`\`\`${command}\`\`\`\n\nResponda com *sim* ou *não*.`;
                 await sendBridgeMessage(selfChatId, askMsg);
                 
                 const approved = await new Promise((resolve) => {
                     const timer = setTimeout(() => {
                         sendBridgeMessage(selfChatId, "⏰ *Tempo de resposta esgotado.* Comando cancelado.");
                         resolve(false);
-                    }, 10 * 60 * 1000); // 10 minutes timeout
+                    }, 2 * 60 * 1000);
                     
                     pendingAsk = { resolve, timer, command };
+
+                    // Send a reminder after 1 minute
+                    setTimeout(async () => {
+                        if (pendingAsk && pendingAsk.timer === timer) {
+                            await sendBridgeMessage(selfChatId, "⏳ Ainda esperando sua resposta... *sim* ou *não*?");
+                        }
+                    }, 60 * 1000);
                 });
                 
                 pendingAsk = null;

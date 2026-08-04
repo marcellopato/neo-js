@@ -5,9 +5,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const readline = require('readline');
 const os = require('os');
+const { installAlias } = require('./install-alias');
 
 // UI Colors (ANSI Escape Codes)
 const C = {
@@ -97,8 +99,13 @@ async function main() {
     bold('\nStep 2: Configurando arquivo de ambiente (.env)...', C.yellow);
     const envPath = path.join(__dirname, '.env');
     let geminiKey = '';
-    let internalApiKey = 'neo_internal_secret_token_' + Math.random().toString(36).substring(2, 15);
-    let neoPassword = 'neo_password_' + Math.random().toString(36).substring(2, 15);
+    // Gera tokens criptograficamente seguros
+    // internalApiKey: 32 bytes → 64 chars hex (256 bits — para API, ninguém digita)
+    // neoPassword: 8 bytes → 16 chars hex + prefixo legível (~20 chars no total)
+    //               (64 bits de entropia — comparável aos ~67 bits do Math.random() antigo,
+    //                é suficiente para senha local verificada localmente)
+    let internalApiKey = crypto.randomBytes(32).toString('hex');
+    let neoPassword = 'neo_' + crypto.randomBytes(8).toString('hex');
 
     if (fs.existsSync(envPath)) {
         log('O arquivo .env já existe nesta pasta.', C.cyan);
@@ -130,7 +137,14 @@ async function main() {
 
     if (geminiKey) {
         fs.writeFileSync(envPath, `GEMINI_API_KEY=${geminiKey.trim()}\nINTERNAL_API_KEY=${internalApiKey}\nNEO_PASSWORD=${neoPassword}\n`);
+        // Protege o arquivo: apenas o dono pode ler (600)
+        try {
+            fs.chmodSync(envPath, 0o600);
+        } catch (permErr) {
+            log(`⚠ Aviso: Não foi possível restringir permissões do .env: ${permErr.message}`, C.yellow);
+        }
         log('✓ Arquivo .env criado e salvo com sucesso!', C.green);
+        log('🔒 Permissões do .env restritas a 600 (apenas dono pode ler).', C.cyan);
     } else {
         log('Mantendo o arquivo .env existente ou pulando configuração.', C.cyan);
     }
@@ -171,8 +185,44 @@ async function main() {
     bold('\nStep 4: Instalando dependências e bibliotecas em Node...', C.yellow);
     await runCommand('npm install', 'Instalando pacotes npm (incluindo whatsapp-web.js)');
 
-    // Step 5: Configure persistence / service
-    bold('\nStep 5: Opções de inicialização automática (Persistência)...', C.yellow);
+    // Step 5: Create the `neo` CLI alias in the user's shell configs
+    bold('\nStep 5: Criando atalho `neo` no terminal...', C.yellow);
+    const launcherPath = path.join(__dirname, 'neo');
+    if (isMac || isLinux) {
+        // Unix: alias bash/zsh/fish apontando para o launcher executável
+        try {
+            fs.chmodSync(launcherPath, 0o755);
+        } catch (chmodErr) {
+            log(`⚠ Aviso: Não foi possível tornar o launcher executável: ${chmodErr.message}`, C.yellow);
+        }
+        if (fs.existsSync(launcherPath)) {
+            const { added, skipped } = installAlias(launcherPath);
+            if (added.length) {
+                log(`✓ Atalho \`neo\` adicionado em: ${added.join(', ')}`, C.green);
+                log(`  Para usar agora, rode: source ${added[0]}`, C.cyan);
+            }
+            if (skipped.length) {
+                log(`ℹ Atalho já existia em: ${skipped.join(', ')} (nada a fazer)`, C.cyan);
+            }
+        } else {
+            log('⚠ Launcher neo não encontrado — pulei a criação do atalho.', C.yellow);
+        }
+    } else if (platform === 'win32') {
+        // Windows: função `neo` no $PROFILE do PowerShell (usa o venv do Windows)
+        const { added, skipped } = installAlias(launcherPath);
+        if (added.length) {
+            log(`✓ Função \`neo\` adicionada ao PowerShell: ${added.join(', ')}`, C.green);
+            log('  Para usar agora, abra um novo PowerShell.', C.cyan);
+        }
+        if (skipped.length) {
+            log(`ℹ Atalho já existia em: ${skipped.join(', ')} (nada a fazer)`, C.cyan);
+        }
+    } else {
+        log('ℹ Atalho `neo` não é suportado nesta plataforma.', C.cyan);
+    }
+
+    // Step 6: Configure persistence / service
+    bold('\nStep 6: Opções de inicialização automática (Persistência)...', C.yellow);
     if (isMac) {
         log('Recomendado no macOS: usar PM2 para gerenciar o Neo em segundo plano.', C.cyan);
         const installPM2 = await question('Deseja configurar a inicialização com o PM2 agora? (s/n): ');
@@ -244,6 +294,13 @@ async function main() {
     bold('        INSTALAÇÃO DO NEO CONCLUÍDA! 🎉           ', C.magenta);
     bold('==================================================', C.magenta);
     log('O Neo está configurado e pronto para decolar.', C.green);
+    log('Atalho no terminal:', C.cyan);
+    log('  Digite `neo` em qualquer lugar para abrir o Neo CLI.', C.bold);
+    if (platform === 'win32') {
+        log('  (Se acabou de instalar, abra um novo PowerShell para recarregar o $PROFILE)', C.cyan);
+    } else {
+        log('  (Se acabou de instalar, abra um terminal novo ou rode: source ~/.zshrc)', C.cyan);
+    }
     log(`\n${C.bold}Como iniciar manualmente e escanear o QR Code:${C.reset}`);
     log('  1. Execute o comando:  ./start.sh');
     log('  2. Abra seu WhatsApp e escaneie o QR Code exibido no terminal.');

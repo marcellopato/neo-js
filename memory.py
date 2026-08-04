@@ -7,14 +7,14 @@ from qdrant_client.models import (
     Distance, VectorParams, PointStruct
 )
 
-QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+# QDRANT_HOST/QDRANT_PORT are read only when using remote Qdrant.
+# The current code uses local Qdrant (path="qdrant_data"), so these are
+# intentionally imported here in case they're needed later.
 COLLECTION_NAME = "neo_dialogs"
 VECTOR_SIZE = 384  # BAAI/bge-small-en via fastembed
 
 _client = None
 _embed_model = None  # singleton — loaded once, reused every call
-_collection_ready = False
 
 
 def _get_client() -> QdrantClient | None:
@@ -131,4 +131,4 @@ def store_memory(user_input: str, assistant_response: str):
 
 
 def retrieve_context(query: str, n_results: int = 3) -> str:
-    return retrieve_relevant_turns(query, top_k=min(n_results, 3))
+    return retrieve_relevant_turns(query, top_k=n_results)

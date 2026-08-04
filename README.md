@@ -1,4 +1,4 @@
-# Neo.JS - Seu Assistente Pessoal Sênior de Backpocket 🚀🐳🎙️
+# Neo.JS — Your Senior Backpocket Personal Assistant 🚀🐳🎙️
 
 ![GitHub repo size](https://img.shields.io/github/repo-size/marcellopato/neo-js?style=for-the-badge&color=25D366)
 ![GitHub stars](https://img.shields.io/github/stars/marcellopato/neo-js?style=for-the-badge&color=eab308)
@@ -7,214 +7,448 @@
 ![GitHub license](https://img.shields.io/github/license/marcellopato/neo-js?style=for-the-badge&color=5865F2)
 ![GitHub open issues](https://img.shields.io/github/issues/marcellopato/neo-js?style=for-the-badge&color=ef4444)
 
-O **Neo** é um assistente pessoal autônomo local que conecta o seu WhatsApp diretamente ao shell do seu sistema operacional (**macOS** ou **Linux**). Ele é orgulhosamente impulsionado pela **Gemini Family** (utilizando o **Gemini 2.5 Flash** para máxima velocidade e economia), rodando sobre o **Google Antigravity SDK** como motor cognitivo para processar linguagem natural, escrever código, gerenciar arquivos e infraestrutura Docker.
+**Neo** is an autonomous, local personal assistant that connects your WhatsApp directly to your operating system's shell (**macOS**, **Linux** or **Windows**). It is proudly powered by the **Gemini Family** — running **Gemini 2.5 Flash** for maximum speed and economy — through the **google-generativeai SDK** as its cognitive engine for natural-language processing, writing code, managing files and Docker infrastructure.
 
-> 🎙️ **Voz:** Envie um áudio (PTT) no WhatsApp para si mesmo e o Neo transcreve e executa automaticamente.
-> 🖥️ **Desktop:** Interface nativa em Go+Wails com ícone na bandeja do sistema para Linux/Zorin OS.
-> 🧠 **Memória RAG:** Contexto semântico inteligente — o Neo lembra apenas do que é relevante, não de tudo.
+> 🎙️ **Voice:** Send an audio message (PTT) on WhatsApp to yourself and Neo transcribes and executes it automatically.
+> 🖥️ **Desktop:** Native Go+Wails interface with a system-tray icon for Linux/Zorin OS.
+> 📱 **Termux/SSH:** Chat with Neo from your phone's terminal — **no WhatsApp needed** (no QR code, bans or bridge).
+> 🌍 **Away from home:** Access from anywhere with **Tailscale** + SSH, without opening router ports or exposing the backend.
+> 🧠 **RAG memory:** Smart semantic context — Neo remembers only what's relevant, not everything.
 
-### 👾 Aparência (Estilo Minecraft)
+### 👾 Look & Feel (Minecraft Style)
 
-| Avatar do App / Tray | Corpo Inteiro |
+| App / Tray Avatar | Full Body |
 |:---:|:---:|
 | <img src="neo_head.png" width="180" /> | <img src="neo_full_body.png" width="180" /> |
 
 ---
 
-## 💸 Economia Absurda (Powered by Gemini 2.5 Flash)
+## 💸 Absurd Cost Savings (Powered by Gemini 2.5 Flash)
 
-O Neo foi projetado para extrair o máximo de autonomia com o mínimo de custo. Ao adotar o **Gemini 2.5 Flash** no coração do Antigravity SDK, conseguimos derrubar o custo de operação para frações de centavos, tornando-o imbatível quando comparado a soluções como OpenClaw ou OpenDevin.
+Neo was designed to squeeze maximum autonomy out of minimum cost. By putting **Gemini 2.5 Flash** at the heart of the cognitive engine, we pushed operating costs down to fractions of a cent, making it unbeatable compared to solutions like OpenClaw or OpenDevin.
 
-| Plataforma / Agente | Custo Médio por Ciclo Autônomo Completo (Pensar, Codar, Testar) |
+| Platform / Agent | Average Cost per Full Autonomous Cycle (Think, Code, Test) |
 |---|---|
-| OpenClaw (GPT-4o) | ~ R$ 1,50 a R$ 2,50 |
-| Agent Padrão (Gemini 1.5 Pro) | ~ R$ 0,15 a R$ 0,30 |
-| **Neo.JS (Gemini 2.5 Flash)** | **~ R$ 0,02 (Dois Centavos!)** |
+| OpenClaw (GPT-4o) | ~ $0.30 – $0.50 |
+| Standard Agent (Gemini 1.5 Pro) | ~ $0.03 – $0.06 |
+| **Neo.JS (Gemini 2.5 Flash)** | **~ $0.004 (half a cent!)** |
 
-Isso significa que você tem um Engenheiro de Software autônomo à sua disposição no WhatsApp, capaz de criar e executar scripts inteiros, cobrando quase nada pelo serviço.
+*Approximate values converted from BRL at ~R$5/US$.*
+
+That means you have an autonomous Software Engineer at your disposal on WhatsApp, able to create and run entire scripts for almost nothing.
 
 ---
 
-## 🏗️ Arquitetura
+## 🏗️ Architecture
 
-A arquitetura do Neo roda **nativamente**, sem depender de Docker, com serviços independentes:
+Neo runs **natively**, without relying on Docker, as independent services:
 
 ```mermaid
 graph TD
-    User([Você / WhatsApp]) <-->|WhatsApp Web Protocol| Bridge[neojs-bridge]
-    Daemon([Desktop App\nGo + Wails]) <-->|HTTP POST /chat| Backend[neojs-backend]
+    User([You / WhatsApp]) <-->|WhatsApp Web Protocol| Bridge[neojs-bridge]
+    Daemon([Desktop App<br/>Go + Wails]) <-->|HTTP POST /chat| Backend[neojs-backend]
     Bridge <-->|HTTP POST /chat| Backend
-    Backend <-->|Google Antigravity SDK| GeminiAPI[Google Gemini API]
-    Backend <-->|fastembed local\nzero API cost| Qdrant[neojs-qdrant\nQdrant Vector DB]
+    Backend <-->|google-generativeai SDK| GeminiAPI[Google Gemini API]
+    Backend <-->|fastembed local<br/>zero API cost| Qdrant[(Embedded Qdrant<br/>./qdrant_data)]
     Backend <-->|run_command / view_file| OS[Local OS / Terminal]
-    Qdrant <-->|Persistência vetorial| Volume[./qdrant_data]
 ```
 
-### Como a memória funciona (RAG para diálogos)
+### How memory works (RAG for conversations)
 
-Em vez de enviar **todo o histórico** da conversa a cada mensagem (crescimento quadrático de tokens 📈), o Neo usa uma abordagem **RAG (Retrieval-Augmented Generation)**:
+Instead of sending the **entire history** of the conversation with every message (quadratic token growth 📈), Neo uses a **RAG (Retrieval-Augmented Generation)** approach:
 
 ```
-ABORDAGEM TRADICIONAL (cara):
-Msg 10 → [system] + msg1 + msg2 + ... + msg10  ← ~10.000 tokens
+TRADITIONAL APPROACH (expensive):
+Msg 10 → [system] + msg1 + msg2 + ... + msg10  ← ~10,000 tokens
 
-ABORDAGEM RAG DO NEO (eficiente):
-Msg 10 → [system] + [top-3 turns relevantes] + msg10  ← ~2.000 tokens constantes
+NEO'S RAG APPROACH (efficient):
+Msg 10 → [system] + [top-3 relevant turns] + msg10  ← ~2,000 constant tokens
 ```
 
-Cada turno de conversa é vetorizado **localmente** com `fastembed` (modelo `BAAI/bge-small`, roda dentro do Docker, sem custo de API) e armazenado no **Qdrant**. A cada nova mensagem, os 3 turnos semanticamente mais relevantes são recuperados e injetados como contexto.
+Each conversation turn is vectorized **locally** with `fastembed` (model `BAAI/bge-small-en-v1.5`, runs in-process, zero API cost) and stored in an **embedded Qdrant** instance under `./qdrant_data` — no Docker, no separate server. On every new message, the 3 most semantically relevant turns are retrieved and injected as context.
 
-### Serviços
+### Services
 
-| Serviço | Tecnologia | Porta | Função |
+| Service | Technology | Port | Role |
 |---|---|---|---|
-| `neojs-backend` | Python + FastAPI + Antigravity SDK | `5000` | Núcleo cognitivo do Neo |
-| `neojs-bridge` | Node.js + whatsapp-web.js | `3303` | Bridge WhatsApp Web |
-| `neojs-qdrant` | Qdrant (Rust) | `6333` / `6334` | Memória vetorial + Dashboard |
-| `daemon` (optional) | Go + Wails | — | App desktop Linux/Zorin OS |
+| `neojs-backend` | Python + FastAPI + google-generativeai | `5000` | Neo's cognitive core |
+| `neojs-bridge` | Node.js + whatsapp-web.js | `3303` | WhatsApp Web bridge (also serves `/ask` approvals) |
+| Embedded Qdrant | Qdrant (in-process, `./qdrant_data`) | — | Vector memory, no server needed |
+| `daemon` (optional) | Go + Wails + systray | — | Linux desktop app (Zorin OS) |
 
-### Controle de custo de tokens
+### Token cost control
 
-- **Sessão do Agent:** reseta automaticamente a cada **10 trocas**, evitando acúmulo de contexto
-- **Embeddings locais:** `fastembed` roda offline dentro do container, **zero custo de API**
-- **Score threshold:** turnos com relevância < 0.5 são ignorados (não poluem o contexto)
-- **Limite de chars:** payload de cada turno armazenado é limitado a 1.000 chars
+- **Agent session:** the context resets automatically every **50 turns**, avoiding unbounded context growth
+- **Local embeddings:** `fastembed` runs offline in-process — **zero API cost**
+- **Score threshold:** turns with relevance < 0.5 are ignored (they don't pollute the context)
+- **Char limit:** each stored turn's payload is capped at 1,000 chars
+- **Rate limiting:** the backend limits each client to **10 requests/minute** (HTTP `429` beyond that)
+- **Fallback chain:** if the Gemini quota is exhausted, the backend tries **Gemini 1.5 Flash** and then **Grok** (via optional `GROK_API_KEY`)
 
-### 🔍 Qdrant Dashboard
+### 🗄️ Memory storage
 
-Quando o Neo estiver rodando, acesse `http://localhost:6333/dashboard` para visualizar em tempo real os diálogos vetorizados, pontos armazenados e fazer buscas semânticas na memória do Neo.
+Vectorized memories live in the local `./qdrant_data` folder (embedded Qdrant). There's no separate Qdrant server or dashboard — everything runs inside the backend process.
 
-### 🖥️ Daemon Desktop & Tray (Linux/Zorin OS)
+### 🖥️ Desktop Daemon & Tray (Linux/Zorin OS)
 
-Um **Daemon Desktop** nativo em Go e Wails adiciona uma camada de interface gráfica:
+A native **Desktop Daemon** in Go + Wails adds a graphical layer:
 
-- **Instância Única:** Impede processos duplicados usando sockets Unix.
-- **Menu da Bandeja:** Ícone ao lado do relógio para abrir o chat, configurações ou encerrar.
-- **Fechar em Background:** O botão `X` oculta a janela sem matar o processo.
-- **Configuração de API Key:** Adicione sua chave Gemini de forma segura pela UI.
-- **Atalhos Globais:** Configure hotkeys globais pela interface.
-- **Entrada por Voz:** Clique no microfone no chat para enviar comandos por áudio — transcrição automática via Gemini.
-
----
-
-## 🛠️ Habilidades Principais
-
-- **🎙️ Comandos por Voz:** Grave um áudio (PTT) no WhatsApp ou no app desktop — o Neo transcreve e executa.
-- **🗣️ Síntese de Voz (TTS) Modular:** O Neo pode responder com áudio no WhatsApp! O sistema atual usa `gTTS` como fallback para respostas rápidas, mas a arquitetura em `tts_engine.py` já foi preparada para receber modelos de clonagem locais (ex: XTTS/Coqui TTS). **Colaboradores são bem-vindos para dar continuidade à integração de `.voicebox.zip` e outros motores pesados!**
-- **🧠 Memória Semântica RAG:** Lembra conversas relevantes via busca vetorial no Qdrant (sem enviar tudo ao LLM).
-- **⚙️ Execução Nativa:** Leve e rápido, roda diretamente no Linux, macOS e Windows sem depender de Docker.
-- **💻 Engenharia de Software:** Expert sênior em PHP (Laravel), Node.js/TypeScript, Python e Flutter/Dart.
-- **🛡️ Auto-Reparo (Self-Healing):** A bridge do WhatsApp atua como um sensor. Se o WhatsApp Web for atualizado e quebrar a conexão, o Neo detecta a falha, atualiza sua própria biblioteca (`whatsapp-web.js`) e reinicia de forma 100% autônoma!
-- **🗜️ Headroom Proxy Integrado:** Otimização avançada de tokens interceptando a comunicação da SDK e comprimindo os prompts antes de chegar no Google Gemini, garantindo máxima economia no longo prazo.
-- **🔒 Privacidade:** Processa apenas mensagens do Self-Chat (você para você mesmo).
+- **Single Instance:** Prevents duplicate processes using Unix sockets.
+- **Tray Menu:** Icon next to the clock to open the chat, settings or quit.
+- **Close in Background:** The `X` button hides the window without killing the process.
+- **API Key Configuration:** Add your Gemini key securely through the UI.
+- **Global Hotkeys:** Configure global hotkeys from the interface.
+- **Voice Input:** Click the microphone in the chat to send voice commands — automatic transcription.
 
 ---
 
-## 💻 Instalação & Setup
+## 🛠️ Main Skills
 
-### 🔑 Obtendo sua API Key do Gemini
-
-#### 1. Google AI Studio (Grátis com limites)
-1. Acesse [Google AI Studio](https://aistudio.google.com/) e faça login.
-2. Clique em **Get API Key** > **Create API Key**.
-3. Copie a chave (começa com `AIzaSy`).
-
-> ⚠️ Chaves gratuitas têm limites de requisições por minuto. Para uso contínuo, recomendamos ativar faturamento.
-
-#### 2. Google Cloud Console (Faturamento Ativo — Recomendado)
-1. Acesse o [Google Cloud Console](https://console.cloud.google.com/).
-2. Crie/selecione um projeto e ative o **Faturamento (Billing)**.
-3. Vá em **APIs & Services > Library**, ative a **Generative Language API**.
-4. Vá em **APIs & Services > Credentials** > **+ Create Credentials > API Key**.
-5. *(Recomendado)* Restrinja a chave para a Generative Language API.
+- **🎙️ Voice Commands:** Record an audio (PTT) on WhatsApp or the desktop app — Neo transcribes and executes it.
+- **🗣️ Modular TTS (Speech Synthesis):** Neo can reply with audio on WhatsApp! The current system uses `gTTS` (pt-BR) for fast responses, but the architecture in `tts_engine.py` is ready to plug in local cloning models (e.g. XTTS/Coqui TTS). **Contributors are welcome to continue the `.voicebox.zip` integration and other heavy engines!**
+- **🧠 Semantic RAG Memory:** Remembers relevant conversations via vector search in Qdrant (without sending everything to the LLM).
+- **⚙️ Native Execution:** Lightweight and fast, runs directly on Linux, macOS and Windows without Docker.
+- **💻 Software Engineering:** Senior expert in PHP (Laravel), Node.js/TypeScript, Python and Flutter/Dart.
+- **🛡️ Auto-Repair (Self-Healing):** The WhatsApp bridge acts as a sensor. If WhatsApp Web updates and breaks the connection, Neo detects the failure, alerts itself to update its own library (`whatsapp-web.js`) and restarts — 100% autonomously.
+- **🔒 Privacy:** Processes only Self-Chat messages (you to yourself).
+- **😴 Lock System:** send `dormir` (or `lock`) on WhatsApp to put Neo to sleep; send your `NEO_PASSWORD` to unlock it again.
 
 ---
 
-### 🚀 Instalação Rápida
+## 💻 Installation & Setup
+
+### 🔑 Getting your Gemini API Key
+
+#### 1. Google AI Studio (Free with limits)
+1. Go to [Google AI Studio](https://aistudio.google.com/) and sign in.
+2. Click **Get API Key** > **Create API Key**.
+3. Copy the key (starts with `AIzaSy`).
+
+> ⚠️ Free keys have per-minute request limits. For continuous use, we recommend enabling billing.
+
+#### 2. Google Cloud Console (Billing enabled — Recommended)
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create/select a project and enable **Billing**.
+3. Go to **APIs & Services > Library** and enable the **Generative Language API**.
+4. Go to **APIs & Services > Credentials** > **+ Create Credentials > API Key**.
+5. *(Recommended)* Restrict the key to the Generative Language API.
+
+---
+
+### 🚀 Quick Install
 
 ```bash
 git clone https://github.com/marcellopato/neo-js.git && cd neo-js && node install.js
 ```
 
-O instalador interativo configura o `.env`, detecta versões antigas e oferece migração automática.
+The interactive installer configures `.env`, detects old versions and offers automatic migration.
 
-### 🔧 Instalação Manual
+### 🖥️ The `neo` terminal shortcut (Step 5 of the installer)
+
+**Step 5** of the installer automatically creates the **`neo`** command in your
+terminal. After installing, just type `neo` in any folder to open the Neo CLI
+(it uses the project's `venv` Python, no manual environment activation needed).
+
+What gets created on each platform:
+
+| Platform | File(s) changed | What is added |
+|---|---|---|
+| **Linux** | `~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, fish `config.fish` | Alias `neo` → project launcher `./neo` |
+| **macOS** | `~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, fish `config.fish` | Alias `neo` → project launcher `./neo` |
+| **Windows** | PowerShell 5.1 and 7 `$PROFILE` (`Documents\WindowsPowerShell` and `Documents\PowerShell`) | Function `neo` → `venv\Scripts\python.exe neo-cli.py` |
+
+Important details:
+
+- **Idempotent:** the installer marks the block with `# Neo CLI`; if the shortcut
+already exists, it **doesn't duplicate anything** (shows *"nothing to do"*).
+- **Windows + OneDrive:** if the `Documents` folder is synced to OneDrive, the
+redirection is detected and the correct `$PROFILE` is used.
+- After installing, **open a new terminal** (or run `source ~/.zshrc` on
+Unix) for the shortcut to take effect.
+
+#### 🔧 Fixing a broken shortcut
+
+If the `neo` command stopped working — for example, after **moving the project
+to another folder** (the old shortcut still points to the previous path) — the
+installer rewrites the shortcut with the current path:
 
 ```bash
-# 1. Configure o ambiente
-cp .env.example .env
-# Edite .env e preencha as variáveis como GEMINI_API_KEY
+# 1. Remove the old block (from the "# Neo CLI" marker) in your shell config
+#    e.g. ~/.zshrc, ~/.bashrc, ~/.bash_profile, config.fish or $PROFILE
 
-# 2. Inicie o sistema
-# O script abaixo cuidará de instalar as dependências de Node e Python e iniciar os processos.
-# No Linux / macOS:
+# 2. Run the installer again
+node install.js
+
+# 3. Open a new terminal (or: source ~/.zshrc) and test
+neo
+```
+
+> ℹ️ The wizard is **interactive** — on re-runs it asks again about
+> overwriting `.env`, recreating the venv and configuring systemd. Answer **`n`**
+> to all of those (keeps your current `.env`/venv/service); only **Step 5**
+> touches the shortcut.
+
+> ⚠️ Because the check is **marker-based**, the installer won't overwrite an
+> existing block even if the path is outdated. So when the project has been
+> moved, delete the old block **before** running `node install.js` — this way it
+> rewrites with the new path.
+
+### 🎬 Installation Video
+
+Prefer to watch the flow instead of reading? Check out the video/GIF of the
+complete installation process:
+
+> ⏳ **Coming soon.** The video/GIF link goes here:
+>
+> <!-- To publish: replace the placeholder below with the real URL.
+>      GIF (renders inline): ![Neo install from scratch](URL_OF_GIF)
+>      mp4 video (GitHub supports the <video> tag):
+>      <video src="URL_OF_MP4_VIDEO" controls></video> -->
+>
+> ![Neo install from scratch](URL_OF_VIDEO_OR_GIF)
+
+The text version of the step-by-step is still available (folded below) in case
+you prefer to follow it in writing:
+
+<details>
+<summary>📋 Manual installation (text version)</summary>
+
+```bash
+# 1. Configure the environment
+cp .env.example .env
+# Edit .env and fill in the variables such as GEMINI_API_KEY
+
+# 2. Start the system
+# The script below installs the Node and Python dependencies and starts the processes.
+# On Linux / macOS:
 chmod +x start.sh
 ./start.sh
 
-# No Windows (PowerShell):
-# Certifique-se de ter Node.js e Python instalados.
+# On Windows (PowerShell):
+# Make sure you have Node.js and Python installed.
 python -m venv venv
 .\venv\Scripts\pip install -r requirements.txt
 npm install
-# Inicie o backend:
+# Start the backend:
 start /B .\venv\Scripts\python agent.py
-# Inicie a bridge:
+# Start the bridge:
 node bridge.js
 ```
 
+</details>
+
 ---
 
-## 🔄 Migração da versão anterior
+## 🔄 Migrating from a previous version
 
-Se você estava usando uma versão anterior (sem Docker ou com ChromaDB), rode:
+If you were using an older version (without Docker or with ChromaDB), run:
 
 ```bash
 chmod +x migrate.sh && ./migrate.sh
 ```
 
-O script remove caches antigos (caso existam) e prepara o ambiente para rodar nativamente.
+The script removes old caches (if any) and prepares the environment to run natively.
 
 ---
 
-## 🚀 Rodando o Neo
+## 🚀 Running Neo
 
 ```bash
 ./start.sh
 ```
 
-Isso inicia o backend em background e a bridge (Node.js) em foreground.
-No primeiro uso, o QR Code do WhatsApp Web aparecerá direto no seu terminal para você escanear.
+This starts the backend (`agent.py`) and the bridge (`bridge.js`) **in the
+background**, both logging to `backend.log` and `output.log` respectively.
+On first use, the WhatsApp Web QR code is printed to `output.log` — watch it
+with:
 
-**No Windows:**
+```bash
+tail -f output.log
+```
+
+**On Windows:**
 ```powershell
 start /B .\venv\Scripts\python agent.py
 node bridge.js
 ```
 
-Para acessar o **Dashboard de Memória Vetorial**:
+---
+
+## 📱 Neo CLI — Control Neo from the Terminal / Termux (SSH)
+
+Besides WhatsApp and the desktop app, you can chat with Neo directly from the
+terminal — including **from your phone via Termux**! The CLI uses the same
+backend endpoints (`/chat/stream` with SSE, `/chat` fallback and `/reset`), so
+no extra server configuration is needed.
+
+### 🎨 Welcome banner with the Neo avatar
+
+The CLI opens with a **neofetch-style** banner showing Neo's own avatar
+(generated from `neo_head.png` as truecolor ASCII art, with half-blocks
+`▀`/`▄`) next to a welcome box with the backend and tips:
+
 ```
-http://localhost:6333/dashboard
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ╔═════════════════════════════════════════╗
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ NEO CLI                                 ║
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ your agent straight from the terminal   ║
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║                                         ║
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ 👋 Hi! I'm Neo.                         ║
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ Give me tasks, commands and             ║
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ questions — I'll run them.              ║
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ Backend : http://127.0.0.1:5000         ║
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ 💡 /help  ·  /status  ·  /reset         ║
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ╚═════════════════════════════════════════╝
 ```
+
+> ✨ In a real terminal Neo's face appears **colored** (truecolor) — the art is
+> embedded inside `neo-cli.py`, so it works on Termux with no extra dependencies.
+
+### On the same machine
+
+```bash
+./venv/bin/python neo-cli.py
+# or, if you installed via Step 5:
+neo
+```
+
+### On your phone via SSH + Termux
+
+Termux is a full Linux terminal for Android. With it, you get WhatsApp-like
+mobility **without the bridge's fragility** (QR code, bans, whatsapp-web.js
+updates).
+
+```bash
+# 1. In Termux, install the packages:
+pkg install python openssh termux-api
+pip install requests python-dotenv
+
+# 2. SSH into the machine running Neo (same local network):
+ssh user@neo-ip
+
+# 3. Run the CLI (from the project directory):
+python3 neo-cli.py
+```
+
+> ⚠️ **Security:** the backend listens only on `127.0.0.1` (localhost), so
+> connecting via SSH keeps everything protected. **Don't expose port 5000 to the
+> internet** — prefer SSH (local or via Tailscale, below).
+
+### 🌍 Away from home — remote access with Tailscale (no WhatsApp)
+
+When you're **on the road** (4G/5G, another Wi-Fi), the local-network
+`neo-ip` no longer works. The best solution is **Tailscale**: a private virtual
+network (WireGuard) between your devices that makes your phone see the Neo
+machine **from anywhere in the world** — no public DNS setup, no router port
+forwarding and no backend exposure to the internet.
+
+| Criterion | Ngrok | Tailscale ✅ |
+|---|---|---|
+| Backend exposed to the internet? | May expose port 5000 | **Never** (encrypted private network) |
+| Stable name/URL | Changes on every restart (free plan) | Fixed via MagicDNS |
+| Need to open a router port? | No | No |
+| Free | 1 limited tunnel | Up to **100 devices** |
+| Leverages the current SSH setup | Partially | ✅ Fully |
+
+```bash
+# ── On the machine running Neo (once) ────────────────────────────────
+sudo tailscale up        # opens URL to authenticate with Google/GitHub account
+tailscale ip -4          # shows the tailnet IP (e.g. 100.x.x.x)
+
+# ── On the phone ───────────────────────────────────────────────────────
+# ⚠️ ATTENTION: `pkg install tailscale` does NOT exist in Termux (own
+#    repositories). Install the Tailscale APP from Play Store / F-Droid and
+#    log in with the SAME account as the machine. Termux uses the system VPN
+#    automatically — no extra package inside Termux is needed.
+
+# ── In Termux, from anywhere (4G/5G, coffee shop, travel) ──────────────
+ssh user@machine-name    # MagicDNS resolves the name automatically
+cd /path/to/neo-js       # project directory
+./venv/bin/python neo-cli.py   # or simply: neo
+```
+
+> 💡 **Why it works:** you SSH into the machine itself and the CLI talks to the
+> backend at `127.0.0.1:5000` **locally** — Tailscale only replaces the "path to
+> the machine", and the backend stays invisible to the internet. No extra server
+> configuration is needed.
+
+> 🔑 **Same account:** the machine and the phone must be logged into the **same
+> Tailscale account**, otherwise they can't see each other.
+
+### 🌟 Termux-only features (auto-detected)
+
+| Feature | Termux command used | How to enable |
+|---|---|---|
+| 🗣️ **Voice** — Neo reads responses aloud | `termux-tts-speak` | automatic on Termux (turn off with `/voz off`) |
+| 🎙️ **Voice commands** — record from the mic and Neo transcribes | `termux-microphone-record` + `/transcribe` endpoint | `/audio` command |
+| 🔐 **Command approval** — notification with Yes/No buttons | `termux-notification` | automatic (fallback: type `yes`/`no` in the terminal — `sim`/`não` also work) |
+| 📋 **Copy response** to the clipboard | `termux-clipboard-set` | `/copiar` command |
+
+### REPL commands
+
+```
+/help          shows this help
+/status        shows the current session configuration
+/reset         resets Neo's conversation context
+/voz on|off    turns voice on/off (Termux)
+/audio         records mic audio and sends it transcribed (Termux)
+/copiar        copies the last response to the clipboard (Termux)
+/exit          exits the Neo CLI  (or Ctrl+D)
+```
+
+### How command approval works
+
+When Neo wants to run a potentially dangerous command, the backend asks for
+authorization. On WhatsApp this goes to the *self-chat* via `/ask` (port 3303).
+With the Neo CLI, the CLI itself starts a mini-server on port 3303 that handles
+the approvals: on Termux a **notification with ✅ Yes / ❌ No buttons** appears;
+outside Termux, just type `yes`/`no` in the terminal (`sim`/`não` also work for
+backwards compatibility).
+
+If port 3303 is already taken by the WhatsApp bridge, the CLI detects it and
+warns you (approvals keep going through WhatsApp) — or use `--ask-port` and
+point the backend to the same port with the `BRIDGE_PORT` env var.
+
+### Options
+
+```
+python3 neo-cli.py [--backend URL] [--api-key KEY] [--ask-port PORT]
+                   [--no-stream] [--no-ask] [--no-voice]
+```
+
+Environment variables: `NEO_BACKEND_URL` (default `http://127.0.0.1:5000`),
+`NEO_GEMINI_API_KEY`, `NEO_ASK_PORT` (default 3303) and `NEO_VOICE`.
+The `INTERNAL_API_KEY` from `.env` is used for authentication.
+
+### 🔑 Environment variables (`.env`)
+
+| Variable | Required | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | ✅ | Main Gemini key (Google AI Studio or Cloud) |
+| `INTERNAL_API_KEY` | ✅ | Internal secret used for auth between services (`X-Neo-Token` header) |
+| `NEO_PASSWORD` | ✅ | Password that unlocks Neo on WhatsApp (see the lock system below) |
+| `GROK_API_KEY` | ⬜ Optional | Emergency fallback when the main Gemini quota runs out |
+| `BRIDGE_HOST` / `BRIDGE_PORT` | ⬜ Optional | Where to reach the approval service (default `localhost:3303`) |
+| `NEO_VOICE_ENABLED` | ⬜ Optional | Enables/disables TTS replies (default `true`) |
 
 ---
 
-## 📦 Requisitos
+## 📦 Requirements
 
 - **Node.js** (v18+)
 - **Python** (v3.10+)
-- **Chave de API do Gemini** (Google AI Studio ou Google Cloud)
+- **Gemini API key** (Google AI Studio or Google Cloud)
 
-> Para o **Daemon Desktop** (Linux/Zorin OS): requer o binário `daemon` compilado com Go + Wails. Consulte `daemon/README.md`.
-
----
-
-## 🤝 Contribuidores
-
-O Neo.JS é uma iniciativa open-source e prospera graças à comunidade. Sinta-se à vontade para abrir Issues, enviar Pull Requests e sugerir novas integrações. 
-
-- **Marcello Pato** - Idealizador e desenvolvedor principal.
-- **Comunidade** - Junte-se a nós para transformar o Neo no agente de IA mais acessível do mundo!
+> For the **Desktop Daemon** (Linux/Zorin OS): requires the `daemon` binary compiled with Go + Wails. See `daemon/README.md`.
 
 ---
 
-*Desenvolvido com carinho para simplificar e turbinar a vida de desenvolvedores modernos.* 🚀💻
+## 🤝 Contributors
+
+Neo.JS is an open-source initiative that thrives thanks to the community. Feel free to open Issues, send Pull Requests and suggest new integrations.
+
+- **Marcello Pato** — Creator and lead developer.
+- **Community** — Join us in turning Neo into the most accessible AI agent in the world!
+
+---
+
+*Made with love to simplify and supercharge the life of modern developers.* 🚀💻
