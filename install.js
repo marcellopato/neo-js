@@ -176,7 +176,7 @@ async function main() {
     await runCommand(`${pipPath} install --upgrade pip`, 'Atualizando gerenciador pip');
     const requirementsPath = path.join(__dirname, 'requirements.txt');
     if (fs.existsSync(requirementsPath)) {
-        await runCommand(`${pipPath} install -r requirements.txt`, 'Instalando bibliotecas do Python (incluindo Antigravity SDK)');
+        await runCommand(`${pipPath} install -r requirements.txt`, 'Instalando bibliotecas do Python (google-generativeai e demais)');
     } else {
         log('⚠ requirements.txt não encontrado. Pulando etapa de pacotes Python.', C.yellow);
     }

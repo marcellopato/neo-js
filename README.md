@@ -195,17 +195,14 @@ neo
 
 ### 🎬 Installation Video
 
-Prefer to watch the flow instead of reading? Check out the video/GIF of the
+Prefer to watch the flow instead of reading? Check out the GIF below with the
 complete installation process:
 
-> ⏳ **Coming soon.** The video/GIF link goes here:
->
-> <!-- To publish: replace the placeholder below with the real URL.
->      GIF (renders inline): ![Neo install from scratch](URL_OF_GIF)
->      mp4 video (GitHub supports the <video> tag):
->      <video src="URL_OF_MP4_VIDEO" controls></video> -->
->
-> ![Neo install from scratch](URL_OF_VIDEO_OR_GIF)
+![Neo install from scratch](assets/install-demo.gif)
+
+> 💡 This GIF was recorded from the **real installer** (`node install.js`) in an
+> isolated sandbox. Want to re-record it after changing the installer? Run
+> `scripts/record-install-demo.sh`.
 
 The text version of the step-by-step is still available (folded below) in case
 you prefer to follow it in writing:
