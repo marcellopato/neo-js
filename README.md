@@ -441,7 +441,7 @@ The `INTERNAL_API_KEY` from `.env` is used for authentication.
 
 ## 📐 Spec-Driven Development (SDD) Harness
 
-Neo.JS integrates natively with **`sdd-agentic-flow`** to enforce structured software engineering practices.
+Neo.JS integrates natively with [**sdd-agentic-flow**](https://github.com/gmartins-dev/sdd-agentic-flow) by [**Guilherme Martins**](https://github.com/gmartins-dev) to enforce structured software engineering practices.
 
 - **Spec First:** Clear feature definitions in `.specs/features/` before writing code.
 - **Evidence & TDD:** Automated validation and check reports before considering tasks completed.
