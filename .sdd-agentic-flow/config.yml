@@ -1,0 +1,52 @@
+version: 1
+
+project:
+  name: example-project
+  default_branch: main
+
+agent:
+  target: generic
+
+language:
+  profile: en-US
+  human_outputs: en-US
+  technical_tokens: canonical
+  bilingual_mode: technical-canonical
+
+specs:
+  root: .specs/features
+  files:
+    - context.md
+    - spec.md
+    - design.md
+    - tasks.md
+
+source:
+  type: local-files
+  snapshots_dir: .sdd-agentic-flow/snapshots
+
+workflow:
+  default_flow: single
+  feature_profile: medium_feature
+  allow_multi_worktree: false
+  allow_stacked_prs: false
+  commit_policy: manual
+  execution_mode: guided
+  autonomy_level: manual
+
+  autonomy_budget:
+    max_iterations: 50
+    max_tokens: 500000
+    max_runtime_hours: 4
+    pause_on_warning: true
+
+quality:
+  tlc_baseline_required: true
+  require_tdd: true
+  require_independent_check: true
+  require_evidence_before_completion: true
+
+safety:
+  no_commit_by_default: true
+  no_push_by_default: true
+  no_merge_or_deploy: true

@@ -1,0 +1,22 @@
+package: sdd-agentic-flow
+package_version: 4.1.0
+schema: 2
+scope: project
+target: project-agents
+skill_identity: saf
+packs:
+  - full
+managed_skills:
+  - saf-setup
+  - saf-route
+  - saf-brainstorm
+  - saf-create-spec
+  - saf-explain
+  - saf-create-prompts
+  - saf-implement
+  - saf-implement-multi
+  - saf-check-task
+  - saf-create-pr
+  - saf-review-pr
+  - saf-fix-pr
+  - saf-validate
