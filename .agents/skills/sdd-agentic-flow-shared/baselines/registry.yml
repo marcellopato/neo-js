@@ -1,0 +1,28 @@
+version: 1
+
+baselines:
+  - id: tlc-spec-driven
+    baseline_version: 0.7.0
+    role: planning
+    source: references/tlc-baseline.md
+    stages: [specify, discuss, design, tasks, execute, verify]
+    upstream_attribution: see NOTICE and LICENSING.md
+    # The upstream skill's own metadata.version, pinned so drift is visible and intentional.
+    # Update upstream_version (and re-review shared/references/tlc-baseline.md for divergence)
+    # whenever the upstream skill publishes a new version — see docs/baselines.md.
+    upstream_version: '3.3.0'
+    upstream_source: https://github.com/tech-leads-club/agent-skills/blob/main/packages/skills-catalog/skills/(development)/tlc-spec-driven/SKILL.md
+    upstream_version_checked_at: '2026-08-08'
+
+  - id: tdd
+    baseline_version: 0.7.0
+    role: implementation
+    source: references/tdd-baseline.md
+    loop: [name-behavior, test-at-contractual-seam, implement, record-evidence]
+    upstream_attribution: see NOTICE and LICENSING.md
+    # The upstream `tdd` skill itself carries no metadata.version, so this pins the
+    # mattpocock/skills repository release tag instead, as the closest available version
+    # signal. Update upstream_version when that repository cuts a new release tag.
+    upstream_version: repo-v1.2.3
+    upstream_source: https://github.com/mattpocock/skills/blob/main/skills/engineering/tdd/SKILL.md
+    upstream_version_checked_at: '2026-08-08'

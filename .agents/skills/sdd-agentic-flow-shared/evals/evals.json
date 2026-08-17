@@ -1,0 +1,21 @@
+{
+  "version": "0.7.0",
+  "purpose": "Representative public skill-authoring prompts",
+  "evals": [
+    {
+      "id": "spec-local",
+      "prompt": "Create specs from a local source item.",
+      "expected_output": "Four traceable SDD files without implementation."
+    },
+    {
+      "id": "task-single",
+      "prompt": "Implement one approved Task.",
+      "expected_output": "One Task scope, tests, and evidence handoff."
+    },
+    {
+      "id": "review-readonly",
+      "prompt": "Review a proposed change.",
+      "expected_output": "Evidence-based findings without code changes."
+    }
+  ]
+}

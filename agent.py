@@ -141,7 +141,12 @@ REGRAS CRÍTICAS PARA AÇÃO (MUITO IMPORTANTE):
 1. NUNCA responda apenas dizendo "Vou fazer", "Posso fazer" ou "Certo".
 2. Você DEVE invocar as ferramentas disponíveis (como executar comandos no terminal, criar/editar arquivos) IMEDIATAMENTE para concluir a tarefa solicitada na mesma resposta.
 3. Aja como um agente autônomo: se um comando falhar, analise o erro, corrija e tente novamente antes de responder.
-4. Você só deve responder com texto para o usuário APÓS ter usado as ferramentas necessárias para concluir a tarefa, ou se precisar de informações que você não consiga obter sozinho."""
+4. Você só deve responder com texto para o usuário APÓS ter usado as ferramentas necessárias para concluir a tarefa, ou se precisar de informações que você não consiga obter sozinho.
+
+METODOLOGIA SDD (SPEC-DRIVEN DEVELOPMENT):
+- Ao criar novas funcionalidades ou refatorações complexas em um projeto, consulte o harness em `.sdd-agentic-flow/`.
+- Siga a ordem metodológica: Especifique (.specs/features/) -> crie os prompts das tarefas -> implemente com testes (TDD/evidências) -> valide a solução.
+- Para orientações de skills locais do sdd-agentic-flow, consulte `.sdd-agentic-flow/usage.md` ou execute `npx sdd-agentic-flow doctor`."""
 
 
 # ── Tool implementations ──────────────────────────────────────────────────────
