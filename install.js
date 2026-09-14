@@ -10,6 +10,7 @@ const { execSync } = require('child_process');
 const readline = require('readline');
 const os = require('os');
 const { installAlias } = require('./install-alias');
+const { generateServiceContent, detectUserAndHome } = require('./install-service');
 
 // UI Colors (ANSI Escape Codes)
 const C = {
@@ -267,12 +268,9 @@ async function main() {
         const installService = await question('Deseja configurar o neo.service no systemd agora? (Requer sudo) (s/n): ');
         if (installService.trim().toLowerCase() === 's') {
             const projectDir = __dirname;
-            // Atualiza o WorkingDirectory e ExecStart com o caminho real do projeto
-            let serviceContent = fs.readFileSync(path.join(projectDir, 'neo.service'), 'utf8');
-            serviceContent = serviceContent
-                .replace(/WorkingDirectory=.*/g, `WorkingDirectory=${projectDir}`)
-                .replace(/ExecStart=.*/g, `ExecStart=${projectDir}/start.sh`)
-                .replace(/ExecStop=.*\n/g, `ExecStop=/bin/bash -c 'kill $(cat ${projectDir}/backend.pid 2>/dev/null) 2>/dev/null; kill $(cat ${projectDir}/bridge.pid 2>/dev/null) 2>/dev/null; rm -f ${projectDir}/backend.pid ${projectDir}/bridge.pid'\n`);
+            const { user, homeDir } = detectUserAndHome();
+            const template = fs.readFileSync(path.join(projectDir, 'neo.service'), 'utf8');
+            const serviceContent = generateServiceContent(template, { user, homeDir, projectDir });
             const tmpService = `/tmp/neo-install.service`;
             fs.writeFileSync(tmpService, serviceContent);
             try {
