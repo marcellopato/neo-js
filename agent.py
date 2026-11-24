@@ -1290,29 +1290,133 @@ def setup_check_update():
 
 @app.post("/setup/apply-update")
 def setup_apply_update():
-    """Download the latest Neo-Assistente-Setup.exe via Python (no SmartScreen flag) and run /VERYSILENT."""
+    """Start downloading the latest Neo-Assistente-Setup.exe with live progress and launch /SILENT installer."""
     import tempfile
+    import threading
+
     if os.name != "nt":
         return {"ok": False, "message": "Atualização automática via .exe disponível apenas no Windows."}
-    try:
-        target_exe = os.path.join(tempfile.gettempdir(), "Neo-Assistente-Setup-Update.exe")
-        with requests.get(GITHUB_DIRECT_EXE_URL, stream=True, timeout=120) as r:
-            r.raise_for_status()
-            with open(target_exe, "wb") as f:
-                for chunk in r.iter_content(chunk_size=65536):
-                    if chunk:
-                        f.write(chunk)
 
-        subprocess.Popen(
-            [target_exe, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
-            close_fds=True,
-        )
-        return {
-            "ok": True,
-            "message": "Atualização baixada! O Neo vai fechar e reabrir atualizado sozinho em cerca de 15 segundos...",
+    if _UPDATE_PROGRESS.get("stage") == "downloading":
+        return {"ok": True, "message": _UPDATE_PROGRESS.get("message", "Download já em andamento...")}
+
+    target_exe = os.path.join(tempfile.gettempdir(), "Neo-Assistente-Setup-Update.exe")
+    _UPDATE_PROGRESS.update(
+        {
+            "stage": "downloading",
+            "percent": 0,
+            "downloaded_mb": 0.0,
+            "total_mb": 0.0,
+            "message": "Iniciando download da atualização no GitHub...",
         }
-    except Exception as exc:
-        return {"ok": False, "message": f"Falha ao baixar/instalar atualização: {str(exc)[:180]}"}
+    )
+
+    def _download_and_launch():
+        try:
+            with requests.get(GITHUB_DIRECT_EXE_URL, stream=True, timeout=180) as r:
+                r.raise_for_status()
+                total_bytes = int(r.headers.get("Content-Length") or 0)
+                total_mb = round(total_bytes / (1024 * 1024), 1) if total_bytes else 97.5
+                downloaded = 0
+                with open(target_exe, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=131072):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        dl_mb = round(downloaded / (1024 * 1024), 1)
+                        pct = min(99, int((downloaded * 100) / total_bytes)) if total_bytes else 50
+                        _UPDATE_PROGRESS.update(
+                            {
+                                "stage": "downloading",
+                                "percent": pct,
+                                "downloaded_mb": dl_mb,
+                                "total_mb": total_mb,
+                                "message": f"Baixando atualização: {pct}% ({dl_mb} MB de {total_mb} MB)...",
+                            }
+                        )
+
+            _UPDATE_PROGRESS.update(
+                {
+                    "stage": "installing",
+                    "percent": 100,
+                    "message": "Download 100% concluído! Abrindo instalador automático na tela e reiniciando o Neo...",
+                }
+            )
+            print(f"[Updater] Download concluído em {target_exe}. Iniciando instalador /SILENT...")
+
+            # Strip PyInstaller internal env vars so child installer & new NeoAssistente.exe start clean
+            clean_env = {
+                k: v
+                for k, v in os.environ.items()
+                if not k.startswith("_MEI") and k not in ("PYTHONPATH", "PYTHONHOME")
+            }
+            creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
+                subprocess, "DETACHED_PROCESS", 0
+            )
+            subprocess.Popen(
+                ["cmd.exe", "/c", "start", "", target_exe, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+                cwd=tempfile.gettempdir(),
+                env=clean_env,
+                creationflags=creation_flags,
+                close_fds=True,
+            )
+            # Exit current NeoAssistente.exe after 1.5s so all file locks are released before Inno Setup copies files
+            time.sleep(1.5)
+            os._exit(0)
+        except Exception as exc:
+            print(f"[Updater] Erro na atualização: {exc}")
+            _UPDATE_PROGRESS.update(
+                {
+                    "stage": "error",
+                    "message": f"Falha ao atualizar: {str(exc)[:180]}",
+                }
+            )
+
+    threading.Thread(target=_download_and_launch, daemon=True).start()
+    return {"ok": True, "message": _UPDATE_PROGRESS["message"]}
+
+
+_UPDATE_PROGRESS: dict = {
+    "stage": "idle",
+    "percent": 0,
+    "downloaded_mb": 0.0,
+    "total_mb": 0.0,
+    "message": "",
+}
+
+
+@app.get("/setup/update-progress")
+def setup_update_progress():
+    """Return real-time download/install progress for the in-app updater."""
+    return _UPDATE_PROGRESS
+
+
+@app.get("/setup/logs")
+def setup_logs():
+    """Return the last 80 lines of neo-assistant.log and runtime diagnostics for easy remote monitoring."""
+    import voice_listener
+
+    log_path = os.path.join(_APP_DATA_DIR, "neo-assistant.log")
+    lines: list[str] = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()[-80:]
+        except Exception as exc:
+            lines = [f"Erro ao ler log: {exc}"]
+    else:
+        lines = ["(Arquivo neo-assistant.log ainda vazio ou rodando em modo console)"]
+
+    return {
+        "ok": True,
+        "commit": _get_local_build_commit() or "dev",
+        "app_dir": _APP_DATA_DIR,
+        "vosk_model_dir": voice_listener.DEFAULT_VOSK_MODEL_DIR,
+        "vosk_model_present": os.path.isdir(voice_listener.DEFAULT_VOSK_MODEL_DIR),
+        "update_progress": _UPDATE_PROGRESS,
+        "log_tail": "".join(lines),
+    }
 
 
 if __name__ == "__main__":

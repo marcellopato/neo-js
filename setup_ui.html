@@ -226,6 +226,16 @@
       <button type="button" class="primary" onclick="saveAll()">Salvar e Ativar Neo Assistente</button>
       <div id="saveStatus" class="status" role="status" aria-live="polite"></div>
     </section>
+
+    <!-- MONITORAMENTO E LOGS -->
+    <section class="card" aria-labelledby="logs-title">
+      <h2 id="logs-title">Diagnóstico e Logs em Tempo Real</h2>
+      <p class="hint" id="diagSummary">Clique abaixo para ver o que o Neo está fazendo em segundo plano.</p>
+      <div class="row">
+        <button type="button" class="secondary" onclick="loadLogs()">Atualizar Logs</button>
+      </div>
+      <pre id="logsBox" style="display:none; margin-top:14px; padding:14px; background:#05080d; border:1px solid var(--border); border-radius:10px; font-size:15px; max-height:280px; overflow:auto; white-space:pre-wrap; color:#cbd5e1;"></pre>
+    </section>
   </main>
 
   <script>
@@ -450,15 +460,46 @@
     async function installUpdateNow() {
       const banner = document.getElementById("updateBanner");
       banner.className = "status ok";
-      banner.textContent = "Baixando e instalando nova versão automaticamente (aguarde ~15 segundos)...";
+      banner.textContent = "Iniciando download da atualização...";
       try {
-        const res = await fetchWithTimeout("/setup/apply-update", { method: "POST" }, 130000);
-        const data = await res.json();
-        banner.className = "status " + (data.ok ? "ok" : "err");
-        banner.textContent = data.message;
+        await fetchWithTimeout("/setup/apply-update", { method: "POST" }, 15000);
+        const timer = setInterval(async () => {
+          try {
+            const r = await fetchWithTimeout("/setup/update-progress", {}, 4000);
+            const p = await r.json();
+            if (p.message) {
+              banner.className = "status " + (p.stage === "error" ? "err" : "ok");
+              banner.textContent = p.message;
+            }
+            if (p.stage === "error") {
+              clearInterval(timer);
+            }
+          } catch (_) {
+            // Backend closed to install new version — wait for new process to start and reload
+            banner.className = "status ok";
+            banner.textContent = "Instalando nova versão e reiniciando o Neo... Esta janela atualizará sozinha.";
+            setTimeout(() => window.location.reload(), 6000);
+          }
+        }, 700);
       } catch (e) {
-        banner.className = "status ok";
-        banner.textContent = "Atualizando e reiniciando o Neo... A janela reabrirá em instantes.";
+        banner.className = "status err";
+        banner.textContent = "Erro ao iniciar atualização: " + e.message;
+      }
+    }
+
+    async function loadLogs() {
+      const box = document.getElementById("logsBox");
+      const summary = document.getElementById("diagSummary");
+      box.style.display = "block";
+      box.textContent = "Carregando logs...";
+      try {
+        const res = await fetchWithTimeout("/setup/logs", {}, 8000);
+        const d = await res.json();
+        summary.textContent = `Versão (commit): ${d.commit} | Modelo Vosk PT-BR: ${d.vosk_model_present ? "OK" : "Ausente"} | Pasta: ${d.app_dir}`;
+        box.textContent = d.log_tail || "(Sem logs registrados)";
+        box.scrollTop = box.scrollHeight;
+      } catch (e) {
+        box.textContent = "Erro ao carregar logs: " + e.message;
       }
     }
 
