@@ -67,6 +67,8 @@ jobs:
             --collect-all vosk `
             --collect-all sounddevice `
             --collect-all edge_tts `
+            --collect-data certifi `
+            --collect-data grpc `
             --collect-submodules uvicorn `
             --collect-submodules fastapi `
             --collect-submodules starlette `

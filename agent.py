@@ -321,7 +321,7 @@ class NeoAgent:
         self._allowed_tool_names = {fn.__name__ for fn in tools}
         self._tool_map = {fn.__name__: fn for fn in tools}
 
-        genai.configure(api_key=effective_key)
+        genai.configure(api_key=effective_key, transport="rest")
         self.model = genai.GenerativeModel(
             model_name=model_name,
             system_instruction=get_system_prompt(self.profile),
@@ -766,7 +766,7 @@ async def transcribe_audio(
         # Configure Gemini (may already be configured by NeoAgent, but ensure it is)
         api_key = os.getenv("GEMINI_API_KEY")
         if api_key:
-            genai.configure(api_key=api_key)
+            genai.configure(api_key=api_key, transport="rest")
 
         audio_bytes = b64.b64decode(payload.data)
 
@@ -1120,38 +1120,45 @@ async def setup_save(payload: SetupSavePayload):
 
 
 @app.post("/setup/test-llm")
-async def setup_test_llm(payload: SetupTestLLMPayload):
-    """Validate a BYOK Gemini API key and auto-resolve the active Flash model."""
+def setup_test_llm(payload: SetupTestLLMPayload):
+    """Validate a BYOK Gemini API key via fast REST HTTPS (10s timeout) and auto-resolve the active Flash model."""
     key = (payload.gemini_api_key or "").strip() or os.getenv("GEMINI_API_KEY")
     if not key:
         return {"ok": False, "message": "Cole a chave do Gemini antes de testar."}
 
-    genai.configure(api_key=key)
     candidates = list(dict.fromkeys([get_llm_config()["model_name"], *FALLBACK_GEMINI_MODELS]))
     last_err = ""
 
     while candidates:
         candidate = candidates.pop(0)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent?key={key}"
+        body = {"contents": [{"parts": [{"text": "Responda apenas: OK"}]}]}
         try:
-            model = genai.GenerativeModel(model_name=candidate)
-            resp = model.generate_content("Responda apenas: OK")
-            if resp and resp.text:
+            res = requests.post(url, json=body, timeout=10)
+            if res.status_code == 200:
                 os.environ["NEO_GEMINI_MODEL"] = candidate
+                genai.configure(api_key=key, transport="rest")
                 return {
                     "ok": True,
                     "message": f"Conexão com o Gemini ({candidate}) funcionando perfeitamente!",
                 }
-        except Exception as exc:
-            last_err = str(exc)
+            err_msg = res.text
+            try:
+                err_msg = res.json().get("error", {}).get("message", res.text)
+            except Exception:
+                pass
+            last_err = f"{res.status_code} {err_msg}"
             suggested = _extract_suggested_model(last_err)
             if suggested and suggested not in candidates and suggested != candidate:
                 candidates.insert(0, suggested)
+        except Exception as exc:
+            last_err = str(exc)
 
-    return {"ok": False, "message": f"Não foi possível conectar ao Gemini: {last_err[:200]}"}
+    return {"ok": False, "message": f"Não foi possível conectar ao Gemini: {last_err[:220]}"}
 
 
 @app.post("/setup/test-email")
-async def setup_test_email(payload: SetupTestEmailPayload):
+def setup_test_email(payload: SetupTestEmailPayload):
     """Test an email account configuration before saving."""
     try:
         adapter = build_adapter_from_entry(payload.account)
@@ -1162,7 +1169,7 @@ async def setup_test_email(payload: SetupTestEmailPayload):
 
 
 @app.post("/setup/test-voice")
-async def setup_test_voice(payload: SetupTestVoicePayload):
+def setup_test_voice(payload: SetupTestVoicePayload):
     """Generate and return a short PT-BR voice sample so the user can hear Neo."""
     os.environ["NEO_VOICE_ENABLED"] = "true"
     os.environ["NEO_TTS_VOICE"] = payload.voice or "pt-BR-FranciscaNeural"

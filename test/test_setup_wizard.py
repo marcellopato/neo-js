@@ -74,7 +74,7 @@ class TestSetupWizard(unittest.TestCase):
                     "password": "secret",
                 }
             )
-            res = asyncio.run(agent.setup_test_email(payload))
+            res = agent.setup_test_email(payload)
             self.assertTrue(res["ok"])
             self.assertIn("sucesso", res["message"].lower())
 

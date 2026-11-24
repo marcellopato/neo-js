@@ -57,12 +57,12 @@ def _cleanup_old_audio():
 
 
 def _synthesize_edge_tts(text: str, filepath: str, voice: str, rate: str) -> None:
-    """Synthesize speech using Microsoft Edge neural TTS (free, no API key)."""
+    """Synthesize speech using Microsoft Edge neural TTS (free, no API key) with 10s timeout."""
     import edge_tts
 
     async def _run():
         communicator = edge_tts.Communicate(text, voice=voice, rate=rate)
-        await communicator.save(filepath)
+        await asyncio.wait_for(communicator.save(filepath), timeout=10.0)
 
     try:
         asyncio.get_running_loop()
@@ -70,7 +70,7 @@ def _synthesize_edge_tts(text: str, filepath: str, voice: str, rate: str) -> Non
         asyncio.run(_run())
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            pool.submit(asyncio.run, _run()).result()
+            pool.submit(asyncio.run, _run()).result(timeout=12.0)
 
 
 def _synthesize_gtts(text: str, filepath: str) -> None:

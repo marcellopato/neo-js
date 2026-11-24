@@ -293,19 +293,30 @@
       showStatus("emailStatus", true, `Conta "${draft.label}" adicionada! Clique em Salvar no final.`);
     }
 
+    async function fetchWithTimeout(url, options, timeoutMs = 20000) {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(id);
+      }
+    }
+
     async function testLLM() {
       const key = document.getElementById("geminiKey").value.trim();
       showStatus("llmStatus", true, "Testando conexão com o Gemini...");
       try {
-        const res = await fetch("/setup/test-llm", {
+        const res = await fetchWithTimeout("/setup/test-llm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ gemini_api_key: key || null })
-        });
+        }, 20000);
         const data = await res.json();
         showStatus("llmStatus", !!data.ok, data.message || "Concluído.");
       } catch (e) {
-        showStatus("llmStatus", false, "Erro ao testar conexão: " + e.message);
+        const msg = e.name === "AbortError" ? "Tempo esgotado (20s). Verifique sua internet ou chave." : e.message;
+        showStatus("llmStatus", false, "Erro ao testar conexão: " + msg);
       }
     }
 
@@ -313,15 +324,16 @@
       const draft = buildImapDraft();
       showStatus("emailStatus", true, "Testando acesso ao e-mail...");
       try {
-        const res = await fetch("/setup/test-email", {
+        const res = await fetchWithTimeout("/setup/test-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ account: draft })
-        });
+        }, 20000);
         const data = await res.json();
         showStatus("emailStatus", !!data.ok, data.message || "Concluído.");
       } catch (e) {
-        showStatus("emailStatus", false, "Erro ao testar e-mail: " + e.message);
+        const msg = e.name === "AbortError" ? "Tempo esgotado (20s) ao conectar no servidor de e-mail." : e.message;
+        showStatus("emailStatus", false, "Erro ao testar e-mail: " + msg);
       }
     }
 
@@ -329,11 +341,11 @@
       const voice = document.getElementById("ttsVoice").value;
       showStatus("voiceStatus", true, "Gerando amostra de voz...");
       try {
-        const res = await fetch("/setup/test-voice", {
+        const res = await fetchWithTimeout("/setup/test-voice", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ voice })
-        });
+        }, 20000);
         if (!res.ok) throw new Error("Falha ao gerar voz.");
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
