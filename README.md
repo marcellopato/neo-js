@@ -1,515 +1,157 @@
-# Neo.JS — Your Senior Backpocket Personal Assistant 🚀🐳🎙️
+# Neo.JS — Autonomous Voice & Developer Personal Assistant 🚀🎙️♿
 
 ![GitHub repo size](https://img.shields.io/github/repo-size/marcellopato/neo-js?style=for-the-badge&color=25D366)
 ![GitHub stars](https://img.shields.io/github/stars/marcellopato/neo-js?style=for-the-badge&color=eab308)
 ![GitHub forks](https://img.shields.io/github/forks/marcellopato/neo-js?style=for-the-badge&color=fb923c)
 ![GitHub last commit](https://img.shields.io/github/last-commit/marcellopato/neo-js?style=for-the-badge&color=007aff)
 ![GitHub license](https://img.shields.io/github/license/marcellopato/neo-js?style=for-the-badge&color=5865F2)
-![GitHub open issues](https://img.shields.io/github/issues/marcellopato/neo-js?style=for-the-badge&color=ef4444)
 
-**Neo** is an autonomous, local personal assistant that connects your WhatsApp directly to your operating system's shell (**macOS**, **Linux** or **Windows**). It is proudly powered by the **Gemini Family** — running **Gemini 2.5 Flash** for maximum speed and economy — through the **google-generativeai SDK** as its cognitive engine for natural-language processing, writing code, managing files and Docker infrastructure.
+**Neo** is a local, **100% BYOK (Bring Your Own Key)** personal AI assistant powered by **Gemini 2.5 Flash**. It runs in two configurable profiles:
 
-> 🎙️ **Voice:** Send an audio message (PTT) on WhatsApp to yourself and Neo transcribes and executes it automatically.
-> 🖥️ **Desktop:** Native Go+Wails interface with a system-tray icon for Linux/Zorin OS.
-> 📱 **Termux/SSH:** Chat with Neo from your phone's terminal — **no WhatsApp needed** (no QR code, bans or bridge).
-> 🌍 **Away from home:** Access from anywhere with **Tailscale** + SSH, without opening router ports or exposing the backend.
-> 🧠 **RAG memory:** Smart semantic context — Neo remembers only what's relevant, not everything.
-
-### 👾 Look & Feel (Minecraft Style)
+- **♿ Voice Accessibility Assistant (`NEO_PROFILE=assistant` — Windows 10/11):** Built for low-vision and hands-free users. Activate by saying **"Ei Neo"**, manage **Gmail & Outlook** by voice in natural Portuguese (`pt-BR`), hear responses with **Microsoft Edge neural voices**, interrupt anytime with `Esc`, and configure everything through a high-contrast visual Setup Wizard (`/setup`).
+- **💻 Developer Backpocket Agent (`NEO_PROFILE=dev` — Linux, macOS, Windows):** Connects WhatsApp, the terminal (`neo-cli.py` / Termux + Tailscale), or the Linux Desktop tray app (`Go + Wails`) directly to your OS shell and code projects.
 
 | App / Tray Avatar | Full Body |
 |:---:|:---:|
-| <img src="neo_head.png" width="180" /> | <img src="neo_full_body.png" width="180" /> |
+| <img src="neo_head.png" width="150" /> | <img src="neo_full_body.png" width="150" /> |
 
 ---
 
-## 💸 Absurd Cost Savings (Powered by Gemini 2.5 Flash)
+## 🪟 Windows 1-Click Install (Voice Assistant `.exe` — No Terminal Required)
 
-Neo was designed to squeeze maximum autonomy out of minimum cost. By putting **Gemini 2.5 Flash** at the heart of the cognitive engine, we pushed operating costs down to fractions of a cent, making it unbeatable compared to solutions like OpenClaw or OpenDevin.
+[![Download Neo-Assistente-Setup.exe](https://img.shields.io/badge/⬇_Download_Windows_Installer-Neo--Assistente--Setup.exe-22c55e?style=for-the-badge&logo=windows)](https://github.com/marcellopato/neo-js/releases/latest/download/Neo-Assistente-Setup.exe)
 
-| Platform / Agent | Average Cost per Full Autonomous Cycle (Think, Code, Test) |
-|---|---|
-| OpenClaw (GPT-4o) | ~ $0.30 – $0.50 |
-| Standard Agent (Gemini 1.5 Pro) | ~ $0.03 – $0.06 |
-| **Neo.JS (Gemini 2.5 Flash)** | **~ $0.004 (half a cent!)** |
+> Direct link: **[`Neo-Assistente-Setup.exe` (Latest Release)](https://github.com/marcellopato/neo-js/releases/latest/download/Neo-Assistente-Setup.exe)** · [All Releases](https://github.com/marcellopato/neo-js/releases)
 
-*Approximate values converted from BRL at ~R$5/US$.*
-
-That means you have an autonomous Software Engineer at your disposal on WhatsApp, able to create and run entire scripts for almost nothing.
-
----
-
-## 🏗️ Architecture
-
-Neo runs **natively**, without relying on Docker, as independent services:
-
-```mermaid
-graph TD
-    User([You / WhatsApp]) <-->|WhatsApp Web Protocol| Bridge[neojs-bridge]
-    Daemon([Desktop App<br/>Go + Wails]) <-->|HTTP POST /chat| Backend[neojs-backend]
-    Bridge <-->|HTTP POST /chat| Backend
-    Backend <-->|google-generativeai SDK| GeminiAPI[Google Gemini API]
-    Backend <-->|fastembed local<br/>zero API cost| Qdrant[(Embedded Qdrant<br/>./qdrant_data)]
-    Backend <-->|run_command / view_file| OS[Local OS / Terminal]
-```
-
-### How memory works (RAG for conversations)
-
-Instead of sending the **entire history** of the conversation with every message (quadratic token growth 📈), Neo uses a **RAG (Retrieval-Augmented Generation)** approach:
-
-```
-TRADITIONAL APPROACH (expensive):
-Msg 10 → [system] + msg1 + msg2 + ... + msg10  ← ~10,000 tokens
-
-NEO'S RAG APPROACH (efficient):
-Msg 10 → [system] + [top-3 relevant turns] + msg10  ← ~2,000 constant tokens
-```
-
-Each conversation turn is vectorized **locally** with `fastembed` (model `BAAI/bge-small-en-v1.5`, runs in-process, zero API cost) and stored in an **embedded Qdrant** instance under `./qdrant_data` — no Docker, no separate server. On every new message, the 3 most semantically relevant turns are retrieved and injected as context.
-
-### Services
-
-| Service | Technology | Port | Role |
-|---|---|---|---|
-| `neojs-backend` | Python + FastAPI + google-generativeai | `5000` | Neo's cognitive core |
-| `neojs-bridge` | Node.js + whatsapp-web.js | `3303` | WhatsApp Web bridge (also serves `/ask` approvals) |
-| Embedded Qdrant | Qdrant (in-process, `./qdrant_data`) | — | Vector memory, no server needed |
-| `daemon` (optional) | Go + Wails + systray | — | Linux desktop app (Zorin OS) |
-
-### Token cost control
-
-- **Agent session:** the context resets automatically every **50 turns**, avoiding unbounded context growth
-- **Local embeddings:** `fastembed` runs offline in-process — **zero API cost**
-- **Score threshold:** turns with relevance < 0.5 are ignored (they don't pollute the context)
-- **Char limit:** each stored turn's payload is capped at 1,000 chars
-- **Rate limiting:** the backend limits each client to **10 requests/minute** (HTTP `429` beyond that)
-- **Fallback chain:** if the Gemini quota is exhausted, the backend tries **Gemini 1.5 Flash** and then **Grok** (via optional `GROK_API_KEY`)
-
-### 🗄️ Memory storage
-
-Vectorized memories live in the local `./qdrant_data` folder (embedded Qdrant). There's no separate Qdrant server or dashboard — everything runs inside the backend process.
-
-### 🖥️ Desktop Daemon & Tray (Linux/Zorin OS)
-
-A native **Desktop Daemon** in Go + Wails adds a graphical layer:
-
-- **Single Instance:** Prevents duplicate processes using Unix sockets.
-- **Tray Menu:** Icon next to the clock to open the chat, settings or quit.
-- **Close in Background:** The `X` button hides the window without killing the process.
-- **API Key Configuration:** Add your Gemini key securely through the UI.
-- **Global Hotkeys:** Configure global hotkeys from the interface.
-- **Voice Input:** Click the microphone in the chat to send voice commands — automatic transcription.
+### 🇧🇷 Passo a passo rápido (Windows para leigos)
+1. **Baixe o instalador:** clique em **[Baixar `Neo-Assistente-Setup.exe`](https://github.com/marcellopato/neo-js/releases/latest/download/Neo-Assistente-Setup.exe)**.
+2. **Execute:** dê duplo clique em `Neo-Assistente-Setup.exe` (se o Windows exibir aviso do SmartScreen, clique em **Mais informações** → **Executar assim mesmo**) e avance até **Instalar**.
+   - Já inclui Python, bibliotecas de voz/e-mail e o modelo offline `"Ei Neo"` (~31 MB) — não precisa instalar mais nada.
+3. **Configure na janela de alto contraste que abrirá sozinha (`http://127.0.0.1:5000/setup`):**
+   - **Passo 1 (Chave Gemini gratuita):** clique no botão para abrir o [Google AI Studio](https://aistudio.google.com/apikey), cole sua chave (`AIza...`) e clique em **Testar conexão**.
+   - **Passo 2 (Gmail e Outlook):** clique em **+ Usar Outlook do Windows automaticamente** (para Outlook Clássico instalado) e/ou adicione seu **Gmail** (usando uma [Senha de App do Google](https://myaccount.google.com/apppasswords)) e clique em **Testar e-mail**.
+   - **Passo 3 (Voz):** clique em **Ouvir a voz do Neo** para testar o áudio.
+   - **Passo 4:** clique em **Salvar e Ativar Neo Assistente**.
+4. **Como usar no dia a dia:**
+   - O Neo inicia sozinho junto com o Windows.
+   - Diga **"Ei Neo"**, aguarde o bip sonoro e fale naturalmente (ex.: *"Lê meus e-mails novos"*, *"Procura um e-mail da Porto Seguro"*).
+   - Quando o Neo fizer uma pergunta, o microfone **reabre automaticamente por ~8 segundos** para você responder sem precisar repetir *"Ei Neo"*.
+   - Aperte **`Esc`** a qualquer momento para interromper a fala imediatamente.
+   - Para reabrir a tela de configuração, basta clicar no atalho **Neo Assistente por Voz** na Área de Trabalho.
 
 ---
 
-## 🛠️ Main Skills
-
-- **🎙️ Voice Commands:** Record an audio (PTT) on WhatsApp or the desktop app — Neo transcribes and executes it.
-- **🗣️ Modular TTS (Speech Synthesis):** Neo can reply with audio on WhatsApp! The current system uses `gTTS` (pt-BR) for fast responses, but the architecture in `tts_engine.py` is ready to plug in local cloning models (e.g. XTTS/Coqui TTS). **Contributors are welcome to continue the `.voicebox.zip` integration and other heavy engines!**
-- **🧠 Semantic RAG Memory:** Remembers relevant conversations via vector search in Qdrant (without sending everything to the LLM).
-- **⚙️ Native Execution:** Lightweight and fast, runs directly on Linux, macOS and Windows without Docker.
-- **💻 Software Engineering:** Senior expert in PHP (Laravel), Node.js/TypeScript, Python and Flutter/Dart.
-- **🛡️ Auto-Repair (Self-Healing):** The WhatsApp bridge acts as a sensor. If WhatsApp Web updates and breaks the connection, Neo detects the failure, alerts itself to update its own library (`whatsapp-web.js`) and restarts — 100% autonomously.
-- **🔒 Privacy:** Processes only Self-Chat messages (you to yourself).
-- **😴 Lock System:** send `dormir` (or `lock`) on WhatsApp to put Neo to sleep; send your `NEO_PASSWORD` to unlock it again.
-
----
-
-## 💻 Installation & Setup
-
-### 🔑 Getting your Gemini API Key
-
-#### 1. Google AI Studio (Free with limits)
-1. Go to [Google AI Studio](https://aistudio.google.com/) and sign in.
-2. Click **Get API Key** > **Create API Key**.
-3. Copy the key (starts with `AIzaSy`).
-
-> ⚠️ Free keys have per-minute request limits. For continuous use, we recommend enabling billing.
-
-#### 2. Google Cloud Console (Billing enabled — Recommended)
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create/select a project and enable **Billing**.
-3. Go to **APIs & Services > Library** and enable the **Generative Language API**.
-4. Go to **APIs & Services > Credentials** > **+ Create Credentials > API Key**.
-5. *(Recommended)* Restrict the key to the Generative Language API.
-
----
-
-### 🚀 Quick Install
+## 💻 Developer Install (Linux, macOS & Windows Source)
 
 ```bash
 git clone https://github.com/marcellopato/neo-js.git && cd neo-js && node install.js
 ```
 
-The interactive installer configures `.env`, detects old versions and offers automatic migration.
-
-### 🖥️ The `neo` terminal shortcut (Step 5 of the installer)
-
-**Step 5** of the installer automatically creates the **`neo`** command in your
-terminal. After installing, just type `neo` in any folder to open the Neo CLI
-(it uses the project's `venv` Python, no manual environment activation needed).
-
-What gets created on each platform:
-
-| Platform | File(s) changed | What is added |
-|---|---|---|
-| **Linux** | `~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, fish `config.fish` | Alias `neo` → project launcher `./neo` |
-| **macOS** | `~/.zshrc`, `~/.bashrc` or `~/.bash_profile`, fish `config.fish` | Alias `neo` → project launcher `./neo` |
-| **Windows** | PowerShell 5.1 and 7 `$PROFILE` (`Documents\WindowsPowerShell` and `Documents\PowerShell`) | Function `neo` → `venv\Scripts\python.exe neo-cli.py` |
-
-Important details:
-
-- **Idempotent:** the installer marks the block with `# Neo CLI`; if the shortcut
-already exists, it **doesn't duplicate anything** (shows *"nothing to do"*).
-- **Windows + OneDrive:** if the `Documents` folder is synced to OneDrive, the
-redirection is detected and the correct `$PROFILE` is used.
-- After installing, **open a new terminal** (or run `source ~/.zshrc` on
-Unix) for the shortcut to take effect.
-
-#### 🔧 Fixing a broken shortcut
-
-If the `neo` command stopped working — for example, after **moving the project
-to another folder** (the old shortcut still points to the previous path) — the
-installer rewrites the shortcut with the current path:
-
-```bash
-# 1. Remove the old block (from the "# Neo CLI" marker) in your shell config
-#    e.g. ~/.zshrc, ~/.bashrc, ~/.bash_profile, config.fish or $PROFILE
-
-# 2. Run the installer again
-node install.js
-
-# 3. Open a new terminal (or: source ~/.zshrc) and test
-neo
-```
-
-> ℹ️ The wizard is **interactive** — on re-runs it asks again about
-> overwriting `.env`, recreating the venv and configuring systemd. Answer **`n`**
-> to all of those (keeps your current `.env`/venv/service); only **Step 5**
-> touches the shortcut.
-
-> ⚠️ Because the check is **marker-based**, the installer won't overwrite an
-> existing block even if the path is outdated. So when the project has been
-> moved, delete the old block **before** running `node install.js` — this way it
-> rewrites with the new path.
-
-### 🎬 Installation Video
-
-Prefer to watch the flow instead of reading? Check out the GIF below with the
-complete installation process:
+The interactive wizard configures `.env`, sets up the Python `venv`, optionally installs the `systemd` service on Linux, and creates the global **`neo`** terminal command.
 
 ![Neo install from scratch](assets/install-demo.gif)
 
-> 💡 This GIF was recorded from the **real installer** (`node install.js`) in an
-> isolated sandbox. Want to re-record it after changing the installer? Run
-> `scripts/record-install-demo.sh`.
-
-The text version of the step-by-step is still available (folded below) in case
-you prefer to follow it in writing:
-
 <details>
-<summary>📋 Manual installation (text version)</summary>
+<summary>📋 Manual startup & Windows source script (<code>Instalar-Neo.bat</code>)</summary>
 
-```bash
-# 1. Configure the environment
-cp .env.example .env
-# Edit .env and fill in the variables such as GEMINI_API_KEY
-
-# 2. Start the system
-# The script below installs the Node and Python dependencies and starts the processes.
-# On Linux / macOS:
-chmod +x start.sh
-./start.sh
-
-# On Windows (PowerShell):
-# Make sure you have Node.js and Python installed.
-python -m venv venv
-.\venv\Scripts\pip install -r requirements.txt
-npm install
-# Start the backend:
-start /B .\venv\Scripts\python agent.py
-# Start the bridge:
-node bridge.js
-```
+- **Linux / macOS:**
+  ```bash
+  cp .env.example .env   # Add your GEMINI_API_KEY
+  chmod +x start.sh && ./start.sh
+  ```
+- **Windows (from source ZIP without `.exe`):**
+  Extract the repository ZIP and double-click **`Instalar-Neo.bat`** in the root folder *(do not double-click `install.js` in Windows Explorer)*.
 
 </details>
 
 ---
 
-## 🔄 Migrating from a previous version
+## 🏗️ Architecture & Services
 
-If you were using an older version (without Docker or with ChromaDB), run:
-
-```bash
-chmod +x migrate.sh && ./migrate.sh
+```mermaid
+graph TD
+    Voice([Windows Voice Client<br/>'Ei Neo' / Vosk]) <-->|HTTP /transcribe & /chat| Backend[neojs-backend<br/>FastAPI :5000]
+    Setup([Accessible Setup Wizard<br/>http://127.0.0.1:5000/setup]) <-->|Localhost Config API| Backend
+    User([WhatsApp PTT / Text]) <-->|WhatsApp Web| Bridge[neojs-bridge :3303]
+    CLI([Neo CLI / Termux / Desktop]) <-->|HTTP /chat/stream| Backend
+    Bridge <-->|HTTP /chat| Backend
+    Backend <-->|Gemini 2.5 Flash BYOK| GeminiAPI[Google Gemini API]
+    Backend <-->|email_tools.py| Email[(Gmail IMAP/SMTP &<br/>Outlook COM / Graph)]
+    Backend <-->|fastembed + Qdrant| Qdrant[(Local Vector Memory)]
 ```
 
-The script removes old caches (if any) and prepares the environment to run natively.
+| Component | File | Technology | Role |
+|---|---|---|---|
+| **Cognitive Backend** | `agent.py` | Python + FastAPI + Gemini 2.5 Flash | Tool-calling agent (`dev` & `assistant` profiles) + `/setup` wizard |
+| **Neural TTS** | `tts_engine.py` | `edge-tts` (`pt-BR-FranciscaNeural`) + `gTTS` fallback | High-quality PT-BR speech synthesis with markdown/emoji stripping |
+| **Multi-Email Tools** | `email_tools.py` | `imaplib`/`smtplib`, `pywin32` COM, MS Graph | Conversational Gmail & Outlook tools with mandatory send confirmation |
+| **Hands-Free Voice** | `voice_listener.py` | `Vosk` offline wake word + `sounddevice` + `pygame` | `"Ei Neo"` listener, audio cues, follow-up window, `Esc` interrupt |
+| **Windows Bundle** | `neo_windows_app.py` | PyInstaller + Inno Setup (`installer/neo-assistente.iss`) | Self-contained Windows `.exe` launcher |
+| **WhatsApp Bridge** | `bridge.js` | Node.js + `whatsapp-web.js` (`:3303`) | Self-chat text & voice (PTT) bridge with auto-healing |
+| **Terminal CLI** | `neo-cli.py` | Python + SSE streaming + Termux API | Local or remote SSH/Termux chat client |
+| **Desktop Tray** | `daemon/` | Go + Wails + systray | Native Linux/Zorin OS tray & hotkey app |
 
 ---
 
-## 🚀 Running Neo
+## 🧠 Cost Efficiency & RAG Memory
 
-```bash
-./start.sh
-```
-
-This starts the backend (`agent.py`) and the bridge (`bridge.js`) **in the
-background**, both logging to `backend.log` and `output.log` respectively.
-On first use, the WhatsApp Web QR code is printed to `output.log` — watch it
-with:
-
-```bash
-tail -f output.log
-```
-
-**On Windows:**
-```powershell
-start /B .\venv\Scripts\python agent.py
-node bridge.js
-```
+- **100% BYOK & Free Software:** Runs directly on your own `GEMINI_API_KEY` (~$0.004 per full autonomous cycle on Gemini 2.5 Flash, or free tier via [Google AI Studio](https://aistudio.google.com/apikey)).
+- **Local Semantic RAG (`memory.py`):** Embeds conversation turns locally with `fastembed` (`BAAI/bge-small-en-v1.5`) into an embedded `./qdrant_data` store — retrieving only the top-3 relevant past turns per message instead of sending the entire history.
+- **Safety Boundaries:**
+  - In `NEO_PROFILE=assistant`, shell execution (`run_command`) and arbitrary file writes (`edit_file`) are disabled (`INV-1`).
+  - `send_email` enforces explicit user confirmation (`confirmed=True`) before transmitting (`INV-2`).
+  - `/setup` binds strictly to `127.0.0.1` and masks all stored secrets (`INV-3`).
 
 ---
 
-## 📱 Neo CLI — Control Neo from the Terminal / Termux (SSH)
+## 📱 Neo CLI, Termux & Remote Access (Tailscale)
 
-Besides WhatsApp and the desktop app, you can chat with Neo directly from the
-terminal — including **from your phone via Termux**! The CLI uses the same
-backend endpoints (`/chat/stream` with SSE, `/chat` fallback and `/reset`), so
-no extra server configuration is needed.
-
-### 🎨 Welcome banner with the Neo avatar
-
-The CLI opens with a **neofetch-style** banner showing Neo's own avatar
-(generated from `neo_head.png` as truecolor ASCII art, with half-blocks
-`▀`/`▄`) next to a welcome box with the backend and tips:
-
-```
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ╔═════════════════════════════════════════╗
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ NEO CLI                                 ║
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ your agent straight from the terminal   ║
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║                                         ║
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ 👋 Hi! I'm Neo.                         ║
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ Give me tasks, commands and             ║
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ questions — I'll run them.              ║
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ Backend : http://127.0.0.1:5000         ║
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ║ 💡 /help  ·  /status  ·  /reset         ║
-▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀   ╚═════════════════════════════════════════╝
-```
-
-> ✨ In a real terminal Neo's face appears **colored** (truecolor) — the art is
-> embedded inside `neo-cli.py`, so it works on Termux with no extra dependencies.
-
-### On the same machine
-
-```bash
-./venv/bin/python neo-cli.py
-# or, if you installed via Step 5:
-neo
-```
-
-### On your phone via SSH + Termux
-
-Termux is a full Linux terminal for Android. With it, you get WhatsApp-like
-mobility **without the bridge's fragility** (QR code, bans, whatsapp-web.js
-updates).
-
-```bash
-# 1. In Termux, install the packages:
-pkg install python openssh termux-api
-pip install requests python-dotenv
-
-# 2. SSH into the machine running Neo (same local network):
-ssh user@neo-ip
-
-# 3. Run the CLI (from the project directory):
-python3 neo-cli.py
-```
-
-> ⚠️ **Security:** the backend listens only on `127.0.0.1` (localhost), so
-> connecting via SSH keeps everything protected. **Don't expose port 5000 to the
-> internet** — prefer SSH (local or via Tailscale, below).
-
-### 🌍 Away from home — remote access with Tailscale (no WhatsApp)
-
-When you're **on the road** (4G/5G, another Wi-Fi), the local-network
-`neo-ip` no longer works. The best solution is **Tailscale**: a private virtual
-network (WireGuard) between your devices that makes your phone see the Neo
-machine **from anywhere in the world** — no public DNS setup, no router port
-forwarding and no backend exposure to the internet.
-
-| Criterion | Ngrok | Tailscale ✅ |
-|---|---|---|
-| Backend exposed to the internet? | May expose port 5000 | **Never** (encrypted private network) |
-| Stable name/URL | Changes on every restart (free plan) | Fixed via MagicDNS |
-| Need to open a router port? | No | No |
-| Free | 1 limited tunnel | Up to **100 devices** |
-| Leverages the current SSH setup | Partially | ✅ Fully |
-
-```bash
-# ── On the machine running Neo (once) ────────────────────────────────
-sudo tailscale up        # opens URL to authenticate with Google/GitHub account
-tailscale ip -4          # shows the tailnet IP (e.g. 100.x.x.x)
-
-# ── On the phone ───────────────────────────────────────────────────────
-# ⚠️ ATTENTION: `pkg install tailscale` does NOT exist in Termux (own
-#    repositories). Install the Tailscale APP from Play Store / F-Droid and
-#    log in with the SAME account as the machine. Termux uses the system VPN
-#    automatically — no extra package inside Termux is needed.
-
-# ── In Termux, from anywhere (4G/5G, coffee shop, travel) ──────────────
-ssh user@machine-name    # MagicDNS resolves the name automatically
-cd /path/to/neo-js       # project directory
-./venv/bin/python neo-cli.py   # or simply: neo
-```
-
-> 💡 **Why it works:** you SSH into the machine itself and the CLI talks to the
-> backend at `127.0.0.1:5000` **locally** — Tailscale only replaces the "path to
-> the machine", and the backend stays invisible to the internet. No extra server
-> configuration is needed.
-
-> 🔑 **Same account:** the machine and the phone must be logged into the **same
-> Tailscale account**, otherwise they can't see each other.
-
-### 🌟 Termux-only features (auto-detected)
-
-| Feature | Termux command used | How to enable |
-|---|---|---|
-| 🗣️ **Voice** — Neo reads responses aloud | `termux-tts-speak` | automatic on Termux (turn off with `/voz off`) |
-| 🎙️ **Voice commands** — record from the mic and Neo transcribes | `termux-microphone-record` + `/transcribe` endpoint | `/audio` command |
-| 🔐 **Command approval** — notification with Yes/No buttons | `termux-notification` | automatic (fallback: type `yes`/`no` in the terminal — `sim`/`não` also work) |
-| 📋 **Copy response** to the clipboard | `termux-clipboard-set` | `/copiar` command |
-
-### REPL commands
-
-```
-/help          shows this help
-/status        shows the current session configuration
-/reset         resets Neo's conversation context
-/voz on|off    turns voice on/off (Termux)
-/audio         records mic audio and sends it transcribed (Termux)
-/copiar        copies the last response to the clipboard (Termux)
-/exit          exits the Neo CLI  (or Ctrl+D)
-```
-
-### How command approval works
-
-When Neo wants to run a potentially dangerous command, the backend asks for
-authorization. On WhatsApp this goes to the *self-chat* via `/ask` (port 3303).
-With the Neo CLI, the CLI itself starts a mini-server on port 3303 that handles
-the approvals: on Termux a **notification with ✅ Yes / ❌ No buttons** appears;
-outside Termux, just type `yes`/`no` in the terminal (`sim`/`não` also work for
-backwards compatibility).
-
-If port 3303 is already taken by the WhatsApp bridge, the CLI detects it and
-warns you (approvals keep going through WhatsApp) — or use `--ask-port` and
-point the backend to the same port with the `BRIDGE_PORT` env var.
-
-### Options
-
-```
-python3 neo-cli.py [--backend URL] [--api-key KEY] [--ask-port PORT]
-                   [--no-stream] [--no-ask] [--no-voice]
-```
-
-Environment variables: `NEO_BACKEND_URL` (default `http://127.0.0.1:5000`),
-`NEO_GEMINI_API_KEY`, `NEO_ASK_PORT` (default 3303) and `NEO_VOICE`.
-The `INTERNAL_API_KEY` from `.env` is used for authentication.
-
-### 🔑 Environment variables (`.env`)
-
-| Variable | Required | Description |
-|---|---|---|
-| `GEMINI_API_KEY` | ✅ | Main Gemini key (Google AI Studio or Cloud) |
-| `INTERNAL_API_KEY` | ✅ | Internal secret used for auth between services (`X-Neo-Token` header) |
-| `NEO_PASSWORD` | ✅ | Password that unlocks Neo on WhatsApp (see the lock system below) |
-| `GROK_API_KEY` | ⬜ Optional | Emergency fallback when the main Gemini quota runs out |
-| `BRIDGE_HOST` / `BRIDGE_PORT` | ⬜ Optional | Where to reach the approval service (default `localhost:3303`) |
-| `NEO_VOICE_ENABLED` | ⬜ Optional | Enables/disables TTS replies (default `true`) |
-
----
-
-## 📦 Requirements
-
-- **Node.js** (v18+)
-- **Python** (v3.10+)
-- **Gemini API key** (Google AI Studio or Google Cloud)
-
-> For the **Desktop Daemon** (Linux/Zorin OS): requires the `daemon` binary compiled with Go + Wails. See `daemon/README.md`.
-
----
-
-## ♿ Voice Accessibility Assistant (Windows · BYOK)
-
-Neo.JS includes a dedicated **voice-first accessibility profile** (`NEO_PROFILE=assistant`), designed for low-vision users on Windows and kept **100% free via BYOK** (Bring Your Own Key):
-
-- **🎙️ Hands-free `"Ei Neo"` wake word (`voice_listener.py`):** Offline local wake-word detection (`Vosk`) with audio cues, natural-language understanding, automatic conversational follow-up window (`NEO_FOLLOWUP_SECONDS`), and instant `Esc` speech interrupt.
-- **🗣️ Neural PT-BR Voice (`tts_engine.py`):** Natural Microsoft neural speech synthesis via `edge-tts` (`pt-BR-FranciscaNeural`) with automatic `gTTS` fallback, working both locally on Windows and over **WhatsApp voice messages (PTT)**.
-- **📧 Multi-Account Email by Voice (`email_tools.py` — Gmail + Outlook):** Read, search, summarize, and reply to emails in natural language across Gmail (IMAP/SMTP App Password) and Outlook (Windows Classic Desktop COM or Microsoft Graph), with mandatory voice confirmation before sending (`confirmed=True`).
-- **🔒 Safe & BYOK-First:** Disables shell execution (`run_command`) and file editing (`edit_file`) in `assistant` mode and runs with your own `GEMINI_API_KEY` (with a clean `NEO_LLM_BASE_URL` seam for future managed plans).
-- **🪄 One-Click Windows Setup (No Terminal):** Double-click [`scripts/Instalar-Neo.bat`](scripts/Instalar-Neo.bat) to bootstrap Python via `winget`, install dependencies, download the offline `Vosk` `pt-BR` model, register silent Windows startup (`scripts/start-assistant-silent.vbs` via `pythonw.exe`), and open the high-contrast visual Setup Wizard at `http://127.0.0.1:5000/setup`.
-
-### 🪟 Windows Easy Install (Single `.exe` — No Terminal, No Python Required)
-
-#### Option A — Standalone Windows Installer (`Neo-Assistente-Setup.exe`, Recommended)
-1. **Download the `.exe` installer:** Click [**Download `Neo-Assistente-Setup.exe`**](https://github.com/marcellopato/neo-js/releases/latest/download/Neo-Assistente-Setup.exe) from GitHub Releases.
-2. **Run the installer:** Double-click `Neo-Assistente-Setup.exe` (if Windows SmartScreen prompts, click **More info** → **Run anyway**) and click **Avançar → Instalar**.
-   - It already bundles Python, all audio/email packages, and the offline `"Ei Neo"` Portuguese voice model — nothing else to install.
-   - It creates the **Neo Assistente por Voz** shortcut on the Desktop, registers auto-start with Windows, and opens the Visual Setup Wizard automatically.
-
-#### Option B — From the Source `.zip` (`Instalar-Neo.bat`)
-1. Download the [**Source ZIP**](https://github.com/marcellopato/neo-js/archive/refs/heads/main.zip) and **Extract All...**.
-2. Open the extracted folder and double-click **`Instalar-Neo.bat`** right in the main folder *(do not click `install.js`, which is for the Linux/macOS Node CLI)*.
-
-#### Configuring in the Visual Setup Wizard (`http://127.0.0.1:5000/setup`)
-- **Step 1:** Click the button to get a free **Gemini API Key** (BYOK), paste it, and click **Testar conexão**.
-- **Step 2:** Click **+ Usar Outlook do Windows automaticamente** (for Classic Outlook Desktop) and/or add your **Gmail** (using a Google App Password) and click **Testar e-mail**.
-- **Step 3:** Click **Ouvir a voz do Neo** to test audio playback.
-- **Step 4:** Click **Salvar e Ativar Neo Assistente**.
-- **Use by voice:** Say **"Ei Neo"** (wait for the short beep) and speak naturally (e.g. *"Lê meus e-mails novos"*). Press **`Esc`** anytime to stop Neo from speaking immediately.
+Run `neo` (or `./venv/bin/python neo-cli.py`) to chat from any terminal with truecolor streaming and `/help`, `/status`, `/reset`, `/voz`, `/audio`, and `/copiar` commands.
 
 <details>
-<summary>🇧🇷 Passo a passo rápido em Português (Instalador .exe para Windows)</summary>
+<summary>🌍 Using Neo from your phone via Termux + Tailscale (No WhatsApp needed)</summary>
 
-1. **Baixe o instalador `.exe`:** clique em [**Baixar `Neo-Assistente-Setup.exe`**](https://github.com/marcellopato/neo-js/releases/latest/download/Neo-Assistente-Setup.exe).
-2. **Instale:** dê duplo clique em **`Neo-Assistente-Setup.exe`** (se aparecer aviso do Windows, clique em **Mais informações** → **Executar assim mesmo**) e clique em **Avançar → Instalar**.
-   - Ele já traz tudo embutido (Python, bibliotecas de voz/e-mail e o modelo offline `"Ei Neo"`).
-3. **Configure na tela visual que vai abrir sozinha:**
-   - Cole sua chave gratuita do **Gemini** (há um botão direto para criá-la) e clique em **Testar conexão**.
-   - Clique em **+ Usar Outlook do Windows automaticamente** e/ou adicione seu **Gmail** (com Senha de App) e teste.
-   - Clique em **Ouvir a voz do Neo** e depois em **Salvar e Ativar Neo Assistente**.
-4. **Pronto!** Daqui em diante o Neo inicia sozinho quando ligar o computador. Basta dizer **"Ei Neo"**, aguardar o bip e falar normalmente. Para interromper a leitura na hora, aperte **`Esc`**.
-
-*(Se preferir baixar pelo arquivo ZIP do código, extraia tudo e dê duplo clique em **`Instalar-Neo.bat`** na pasta principal — não clique em `install.js`.)*
+1. Install **Tailscale** on the Neo host (`sudo tailscale up`) and on your Android phone (from Play Store / F-Droid, same account).
+2. In **Termux**:
+   ```bash
+   pkg install python openssh termux-api
+   ssh user@machine-name
+   neo
+   ```
+   The backend remains safely bound to `127.0.0.1:5000` while Termux gives you mobile voice (`termux-tts-speak`, `termux-microphone-record`) and push approval buttons (`termux-notification`).
 
 </details>
 
-> 📐 **SDD Specification:** Full specification, design decisions, and task breakdown live in [`.specs/features/voice-accessibility-assistant/`](.specs/features/voice-accessibility-assistant/spec.md).
+---
+
+## 🔑 Environment Variables (`.env`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | *(required)* | Your Google AI Studio / Cloud Gemini API key (BYOK) |
+| `INTERNAL_API_KEY` | *(auto-generated)* | Internal auth secret (`X-Neo-Token` header) |
+| `NEO_PROFILE` | `dev` (`assistant` on Windows `.exe`) | `dev` (coding/shell tools) or `assistant` (voice-first, email, no shell) |
+| `NEO_VOICE_ENABLED` | `true` | Enables TTS audio replies |
+| `NEO_TTS_VOICE` | `pt-BR-FranciscaNeural` | Microsoft Edge neural voice (`pt-BR-FranciscaNeural`, `pt-BR-AntonioNeural`) |
+| `NEO_TTS_RATE` | `+0%` | Speech rate adjustment (e.g. `+10%`, `-5%`) |
+| `NEO_FOLLOWUP_SECONDS` | `8` | Seconds microphone stays open for follow-up replies after Neo speaks |
+| `NEO_PASSWORD` | *(optional)* | Unlock password for WhatsApp `dormir` / `lock` command |
+| `GROK_API_KEY` | *(optional)* | Fallback xAI Grok key if Gemini quota is exhausted |
 
 ---
 
-## 📐 Spec-Driven Development (SDD) Harness
+## 📐 Spec-Driven Development (SDD)
 
-Neo.JS integrates natively with [**sdd-agentic-flow**](https://github.com/gmartins-dev/sdd-agentic-flow) by [**Guilherme Martins**](https://github.com/gmartins-dev) to enforce structured software engineering practices.
+Neo.JS uses [**sdd-agentic-flow**](https://github.com/gmartins-dev/sdd-agentic-flow) with specifications under [`.specs/features/voice-accessibility-assistant/`](.specs/features/voice-accessibility-assistant/spec.md). Run tests with:
 
-- **Spec First:** Clear feature definitions in `.specs/features/` before writing code.
-- **Evidence & TDD:** Automated validation and check reports before considering tasks completed.
-- **Human Governance:** Review checkpoints for PRs and major code changes.
-
-To run or check the SDD harness setup inside Neo.JS:
 ```bash
-npx sdd-agentic-flow doctor
+./venv/bin/python -m unittest discover -s test -p "test_*.py" -v
+npm test
 ```
 
 ---
 
 ## 🤝 Contributors
 
-Neo.JS is an open-source initiative that thrives thanks to the community. Feel free to open Issues, send Pull Requests and suggest new integrations.
-
 - **Marcello Pato** — Creator and lead developer.
-- **Community** — Join us in turning Neo into the most accessible AI agent in the world!
-
----
-
-*Made with love to simplify and supercharge the life of modern developers.* 🚀💻
+- **Community** — Issues and Pull Requests are welcome!
