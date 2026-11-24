@@ -115,8 +115,8 @@
   <main>
     <header style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
       <div>
-        <h1>Neo Assistente por Voz</h1>
-        <p>Configuração rápida em alto contraste. Depois de salvar, basta dizer <strong>"Ei Neo"</strong>.</p>
+        <h1>Jarvis — Assistente por Voz (Neo)</h1>
+        <p>Configuração rápida em alto contraste. Depois de salvar, basta dizer <strong>"Jarvis"</strong> ou <strong>"Ei Jarvis"</strong>.</p>
       </div>
       <div>
         <button type="button" class="secondary" onclick="checkOrApplyUpdate(false)" id="btnCheckUpdate">
@@ -196,18 +196,18 @@
 
     <!-- PASSO 3: VOZ -->
     <section class="card" aria-labelledby="step3-title">
-      <h2 id="step3-title">3. Voz do Neo</h2>
+      <h2 id="step3-title">3. Voz do Jarvis e Microfone</h2>
       <label for="ttsVoice">Escolha a voz</label>
       <select id="ttsVoice">
+        <option value="pt-BR-AntonioNeural">Antonio (Masculina, natural — estilo Jarvis)</option>
         <option value="pt-BR-FranciscaNeural">Francisca (Feminina, natural)</option>
-        <option value="pt-BR-AntonioNeural">Antonio (Masculina, natural)</option>
       </select>
 
-      <label for="followupSec">Tempo que o microfone fica aberto após o Neo perguntar (segundos)</label>
+      <label for="followupSec">Tempo que o microfone fica aberto após o Jarvis perguntar (segundos)</label>
       <input id="followupSec" type="number" min="3" max="20" value="8" />
 
       <div class="row">
-        <button type="button" class="secondary" onclick="testVoice()">Ouvir a voz do Neo</button>
+        <button type="button" class="secondary" onclick="testVoice()">Ouvir a voz do Jarvis</button>
         <button type="button" class="secondary" onclick="testMic()">Testar Microfone (3 segundos)</button>
       </div>
       <audio id="voicePlayer" controls style="display:none; width:100%; margin-top:12px;"></audio>
@@ -380,7 +380,7 @@
     }
 
     async function testMic() {
-      showStatus("micStatus", true, "Ouvindo por 3 segundos... Diga 'Ei Neo' (Ei Níu) agora!");
+      showStatus("micStatus", true, "Ouvindo por 3 segundos... Diga 'Jarvis' ou 'Ei Jarvis' agora!");
       try {
         const res = await fetchWithTimeout("/setup/test-mic", {
           method: "POST"

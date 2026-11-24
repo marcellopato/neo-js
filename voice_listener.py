@@ -24,6 +24,20 @@ import tts_engine
 load_dotenv()
 
 DEFAULT_WAKE_PHRASES = (
+    "jarvis",
+    "ei jarvis",
+    "oi jarvis",
+    "ok jarvis",
+    "ola jarvis",
+    "jarbas",
+    "ei jarbas",
+    "oi jarbas",
+    "ok jarbas",
+    "ei chaves",
+    "oi chaves",
+    "ok chaves",
+    "ei charles",
+    "oi charles",
     "ei neo",
     "oi neo",
     "ok neo",
@@ -66,7 +80,11 @@ DEFAULT_WAKE_PHRASES = (
 )
 
 _WAKE_REGEX = re.compile(
-    r"\b(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e|em|en|hem|hein|um)\s+(?:neo|niu|nil|new|nio|nel|neu|meu|mil|ninho)\b"
+    r"\b(?:"
+    r"(?:(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e|em|en|hem|hein|um)\s+)?(?:jarvis|jarves|jarbas)"
+    r"|"
+    r"(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e|em|en|hem|hein|um)\s+(?:chaves|charles|neo|niu|nil|new|nio|nel|neu|meu|mil|ninho)"
+    r")\b"
 )
 
 
@@ -377,7 +395,7 @@ def run_voice_loop(
     model = Model(model_dir)
     recognizer = KaldiRecognizer(model, SAMPLE_RATE)
 
-    print("[Voice] Neo ouvindo em modo standby. Diga 'Ei Neo' para começar.")
+    print("[Voice] Jarvis ouvindo em modo standby. Diga 'Jarvis' ou 'Ei Jarvis' para começar.")
     last_partial = ""
 
     while True:
@@ -549,7 +567,7 @@ def test_microphone_sample(duration_seconds: float = 3.0) -> dict:
         "message": (
             f"Microfone funcionando! Volume máximo: {int(peak_rms)}. "
             + (f"Ouvido: '{heard_text}'." if heard_text else "Som captado (nenhuma palavra reconhecida no trecho).")
-            + (" Gatilho 'Ei Níu' reconhecido!" if wake_detected else "")
+            + (" Gatilho 'Jarvis' reconhecido!" if wake_detected else "")
             if has_signal
             else f"Microfone muito baixo ou sem som (Volume: {int(peak_rms)}). Verifique o microfone padrão do Windows."
         ),

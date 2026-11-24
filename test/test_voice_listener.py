@@ -6,6 +6,13 @@ class TestVoiceListener(unittest.TestCase):
     def test_wake_phrase_matching_variants(self):
         import voice_listener as vl
 
+        self.assertTrue(vl.matches_wake_phrase("jarvis"))
+        self.assertTrue(vl.matches_wake_phrase("ei jarvis"))
+        self.assertTrue(vl.matches_wake_phrase("oi jarbas"))
+        self.assertEqual(
+            vl.extract_command_after_wake("jarvis leia meus emails"),
+            "leia meus emails",
+        )
         self.assertTrue(vl.matches_wake_phrase("ei neo"))
         self.assertTrue(vl.matches_wake_phrase("ei niu"))
         self.assertTrue(vl.matches_wake_phrase("ok nil"))

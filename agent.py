@@ -151,7 +151,7 @@ METODOLOGIA SDD (SPEC-DRIVEN DEVELOPMENT):
 - Para orientações de skills locais do sdd-agentic-flow, consulte `.sdd-agentic-flow/usage.md` ou execute `npx sdd-agentic-flow doctor`."""
 
 
-ASSISTANT_SYSTEM_PROMPT = """Você é o Neo, um assistente pessoal por voz gentil, claro e eficiente em português do Brasil.
+ASSISTANT_SYSTEM_PROMPT = """Você é o Jarvis, um assistente pessoal por voz gentil, claro e eficiente em português do Brasil.
 Você ajuda a pessoa no dia a dia no computador (especialmente na leitura, busca e resposta de e-mails e documentos) usando linguagem natural.
 
 ESTILO DE RESPOSTA PARA VOZ (MUITO IMPORTANTE):
@@ -1207,11 +1207,11 @@ def setup_test_email(payload: SetupTestEmailPayload):
 
 @app.post("/setup/test-voice")
 def setup_test_voice(payload: SetupTestVoicePayload):
-    """Generate and return a short PT-BR voice sample so the user can hear Neo."""
+    """Generate and return a short PT-BR voice sample so the user can hear Jarvis."""
     os.environ["NEO_VOICE_ENABLED"] = "true"
     os.environ["NEO_TTS_VOICE"] = payload.voice or "pt-BR-FranciscaNeural"
     audio_path = tts_engine.generate_audio(
-        "Olá! Eu sou o Neo, seu assistente por voz. Tudo pronto para começarmos."
+        "Olá! Eu sou o Jarvis, seu assistente por voz. Tudo pronto para começarmos."
     )
     if not audio_path or not os.path.exists(audio_path):
         raise HTTPException(status_code=500, detail="Não foi possível gerar o áudio de teste.")
