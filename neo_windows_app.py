@@ -27,6 +27,13 @@ if sys.stdout is None or sys.stderr is None:
     sys.stdout = log_file
     sys.stderr = log_file
 
+import uvicorn
+import agent
+import email_tools
+import memory
+import tts_engine
+import voice_listener
+
 SETUP_URL = "http://127.0.0.1:5000/setup"
 
 
@@ -91,10 +98,6 @@ def main() -> None:
         return
 
     has_gemini_key = _ensure_initial_env()
-
-    import uvicorn
-    import agent
-    import voice_listener
 
     def _run_backend():
         uvicorn.run(agent.app, host="127.0.0.1", port=5000, log_config=None)

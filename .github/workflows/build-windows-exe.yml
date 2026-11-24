@@ -11,6 +11,8 @@ on:
       - 'memory.py'
       - 'neo_windows_app.py'
       - 'setup_ui.html'
+      - 'requirements.txt'
+      - 'requirements-voice.txt'
       - 'installer/**'
       - '.github/workflows/build-windows-exe.yml'
   workflow_dispatch:
@@ -31,15 +33,23 @@ jobs:
           python-version: '3.11'
 
       - name: Install Python dependencies & PyInstaller
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           python -m pip install --upgrade pip
-          pip install google-generativeai>=0.8.0 fastapi uvicorn requests python-dotenv gTTS==2.5.4 edge-tts>=6.1.0 click>=8.4.2
-          pip install -r requirements-voice.txt
-          pip install pyinstaller
+          python -m pip install "google-generativeai>=0.8.0" fastapi uvicorn requests python-dotenv "gTTS==2.5.4" "edge-tts>=6.1.0"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install -r requirements-voice.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -c "import uvicorn, fastapi, google.generativeai, edge_tts, gtts, vosk, sounddevice, pygame, win32com.client; print('ALL_IMPORTS_OK')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Download offline PT-BR Vosk wake-word model (~31 MB)
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force -Path "models" | Out-Null
           $zipPath = Join-Path $env:TEMP "vosk-pt.zip"
           Invoke-WebRequest -Uri "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip" -OutFile $zipPath -UseBasicParsing
@@ -49,6 +59,7 @@ jobs:
       - name: Build NeoAssistente.exe with PyInstaller
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           pyinstaller --noconfirm --onedir --noconsole `
             --name NeoAssistente `
             --add-data "setup_ui.html;." `
@@ -56,14 +67,21 @@ jobs:
             --collect-all vosk `
             --collect-all sounddevice `
             --collect-all edge_tts `
+            --collect-submodules uvicorn `
+            --collect-submodules fastapi `
+            --collect-submodules starlette `
+            --collect-submodules google.generativeai `
             --hidden-import win32com.client `
             --hidden-import pythoncom `
             neo_windows_app.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile Neo-Assistente-Setup.exe with Inno Setup
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\neo-assistente.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
