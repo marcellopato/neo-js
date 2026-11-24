@@ -60,9 +60,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          @{ commit = "${{ github.sha }}"; built_at = (Get-Date -Format "o") } | ConvertTo-Json | Set-Content -Path "build_info.json" -Encoding UTF8
           pyinstaller --noconfirm --onedir --noconsole `
             --name NeoAssistente `
             --add-data "setup_ui.html;." `
+            --add-data "build_info.json;." `
             --add-data "models\vosk-pt;models\vosk-pt" `
             --collect-all vosk `
             --collect-all sounddevice `
@@ -99,5 +101,6 @@ jobs:
           body: |
             Instalador completo com 1 clique para Windows 10/11 (**não precisa instalar Python nem usar terminal**).
             Baixe **`Neo-Assistente-Setup.exe`**, dê duplo clique e siga a tela de configuração em alto contraste.
+            Commit: ${{ github.sha }}
           files: dist/Neo-Assistente-Setup.exe
           make_latest: true

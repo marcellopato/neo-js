@@ -31,7 +31,7 @@ Name: "{autodesktop}\Neo Assistente por Voz"; Filename: "{app}\NeoAssistente.exe
 Name: "{userstartup}\Neo Assistente por Voz"; Filename: "{app}\NeoAssistente.exe"; Tasks: startupicon
 
 [Run]
-Filename: "{app}\NeoAssistente.exe"; Parameters: "--setup"; Description: "Abrir o Neo Assistente agora para configurar"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\NeoAssistente.exe"; Parameters: "--setup"; Description: "Abrir o Neo Assistente agora para configurar"; Flags: nowait postinstall
 
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;

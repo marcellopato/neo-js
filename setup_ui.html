@@ -113,10 +113,18 @@
 </head>
 <body>
   <main>
-    <header style="margin-bottom: 24px;">
-      <h1>Neo Assistente por Voz</h1>
-      <p>Configuração rápida em alto contraste. Depois de salvar, basta dizer <strong>"Ei Neo"</strong>.</p>
+    <header style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+      <div>
+        <h1>Neo Assistente por Voz</h1>
+        <p>Configuração rápida em alto contraste. Depois de salvar, basta dizer <strong>"Ei Neo"</strong>.</p>
+      </div>
+      <div>
+        <button type="button" class="secondary" onclick="checkOrApplyUpdate(false)" id="btnCheckUpdate">
+          Verificar Atualização
+        </button>
+      </div>
     </header>
+    <div id="updateBanner" class="status" role="status" aria-live="polite" style="margin-bottom: 20px;"></div>
 
     <!-- PASSO 1: GEMINI BYOK -->
     <section class="card" aria-labelledby="step1-title">
@@ -394,10 +402,51 @@
         if (s.whatsapp_connected) {
           document.getElementById("waText").textContent = "WhatsApp já está conectado e pronto para receber áudios.";
         }
+        checkOrApplyUpdate(true);
       } catch (e) {
         console.error(e);
       }
     }
+
+    async function checkOrApplyUpdate(silentCheck) {
+      const banner = document.getElementById("updateBanner");
+      if (!silentCheck) {
+        banner.className = "status ok";
+        banner.textContent = "Verificando atualizações no GitHub...";
+      }
+      try {
+        const res = await fetchWithTimeout("/setup/check-update", {}, 10000);
+        const data = await res.json();
+        if (data.update_available) {
+          banner.className = "status ok";
+          banner.innerHTML = `${data.message} <button type="button" style="margin-left:12px; padding:8px 16px; font-size:17px;" onclick="installUpdateNow()">Atualizar em 1 clique</button>`;
+        } else if (!silentCheck) {
+          banner.className = "status ok";
+          banner.textContent = data.message || "Seu Neo já está atualizado.";
+        }
+      } catch (e) {
+        if (!silentCheck) {
+          banner.className = "status err";
+          banner.textContent = "Não foi possível verificar atualizações agora.";
+        }
+      }
+    }
+
+    async function installUpdateNow() {
+      const banner = document.getElementById("updateBanner");
+      banner.className = "status ok";
+      banner.textContent = "Baixando e instalando nova versão automaticamente (aguarde ~15 segundos)...";
+      try {
+        const res = await fetchWithTimeout("/setup/apply-update", { method: "POST" }, 130000);
+        const data = await res.json();
+        banner.className = "status " + (data.ok ? "ok" : "err");
+        banner.textContent = data.message;
+      } catch (e) {
+        banner.className = "status ok";
+        banner.textContent = "Atualizando e reiniciando o Neo... A janela reabrirá em instantes.";
+      }
+    }
+
     loadStatus();
   </script>
 </body>

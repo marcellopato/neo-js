@@ -184,7 +184,14 @@ def get_system_prompt(profile: str | None = None) -> str:
 
 
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
-FALLBACK_GEMINI_MODELS = ("gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash")
+FALLBACK_GEMINI_MODELS = (
+    "gemini-3.8-flash",
+    "gemini-3.8-flash-lite",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+)
 
 
 def _extract_suggested_model(error_text: str) -> str | None:
@@ -602,33 +609,36 @@ async def chat_endpoint(
             print("[Agent] Quota/Tokens exceeded. Iniciando chain de fallback...")
             gemini_key = target_api_key or os.getenv("GEMINI_API_KEY")
 
-            # Fallback 2: Gemini Flash Latest via direct HTTP
+            # Fallback 2: Iterate through Flash / Flash-Lite models via direct REST HTTP (handles 503 high demand & 429)
             if gemini_key:
-                print("[Agent] Tentando Fallback 2: Gemini Flash Latest...")
-                try:
-                    gemini_url = (
-                        "https://generativelanguage.googleapis.com/v1beta/models/"
-                        f"gemini-flash-latest:generateContent?key={gemini_key}"
-                    )
-                    headers = {"Content-Type": "application/json"}
-                    data = {
-                        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-                        "contents": [{"parts": [{"text": augmented_message}]}],
-                    }
-                    loop = asyncio.get_event_loop()
-                    res = await loop.run_in_executor(
-                        None, lambda: requests.post(gemini_url, json=data, headers=headers, timeout=60)
-                    )
-                    if res.status_code == 200:
-                        try:
-                            text_resp = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                            return "⚠️ *Aviso: Limite do modelo principal excedido. Usando Gemini 1.5 Flash.* ⚠️\n\n" + text_resp
-                        except Exception:
-                            pass
-                    else:
-                        print(f"[Agent] Gemini 1.5 Flash falhou com status {res.status_code}: {res.text}")
-                except Exception as e:
-                    print(f"[Agent] Erro na requisição do Gemini 1.5 Flash: {e}")
+                active_prompt = get_system_prompt(get_active_profile())
+                for fb_model in FALLBACK_GEMINI_MODELS:
+                    print(f"[Agent] Tentando Fallback REST: {fb_model}...")
+                    try:
+                        gemini_url = (
+                            "https://generativelanguage.googleapis.com/v1beta/models/"
+                            f"{fb_model}:generateContent?key={gemini_key}"
+                        )
+                        headers = {"Content-Type": "application/json"}
+                        data = {
+                            "systemInstruction": {"parts": [{"text": active_prompt}]},
+                            "contents": [{"parts": [{"text": augmented_message}]}],
+                        }
+                        loop = asyncio.get_event_loop()
+                        res = await loop.run_in_executor(
+                            None, lambda u=gemini_url: requests.post(u, json=data, headers=headers, timeout=30)
+                        )
+                        if res.status_code == 200:
+                            try:
+                                text_resp = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                                os.environ["NEO_GEMINI_MODEL"] = fb_model
+                                return text_resp
+                            except Exception:
+                                pass
+                        else:
+                            print(f"[Agent] {fb_model} falhou com status {res.status_code}: {res.text[:160]}")
+                    except Exception as e:
+                        print(f"[Agent] Erro na requisição de {fb_model}: {e}")
 
             # Fallback 3: Grok
             grok_api_key = os.getenv("GROK_API_KEY")
@@ -677,6 +687,11 @@ async def chat_endpoint(
 
             is_quota_error = (
                 "429" in err_str
+                or "503" in err_str
+                or "404" in err_str
+                or "high demand" in err_str
+                or "overloaded" in err_str
+                or "no longer available" in err_str
                 or "quota" in err_str
                 or "exhausted" in err_str
                 or "billing" in err_str
@@ -769,30 +784,31 @@ async def transcribe_audio(
             genai.configure(api_key=api_key, transport="rest")
 
         audio_bytes = b64.b64decode(payload.data)
-
-        active_model = get_llm_config()["model_name"]
-        model = genai.GenerativeModel(
-            model_name=active_model,
-        )
-
         prompt = "Por favor, transcreva o audio desta mensagem em portugues e retorne APENAS o texto da transcricao literal de forma limpa, sem comentarios ou explicacoes."
 
-        try:
-            response = model.generate_content([
-                prompt,
-                {"mime_type": payload.mimeType, "data": audio_bytes},
-            ])
-        except Exception as first_err:
-            suggested = _extract_suggested_model(str(first_err))
-            if suggested and suggested != active_model:
-                os.environ["NEO_GEMINI_MODEL"] = suggested
-                model = genai.GenerativeModel(model_name=suggested)
+        candidates = list(dict.fromkeys([get_llm_config()["model_name"], *FALLBACK_GEMINI_MODELS]))
+        response = None
+        last_err = None
+        while candidates:
+            candidate = candidates.pop(0)
+            try:
+                model = genai.GenerativeModel(model_name=candidate)
                 response = model.generate_content([
                     prompt,
                     {"mime_type": payload.mimeType, "data": audio_bytes},
                 ])
-            else:
-                raise first_err
+                os.environ["NEO_GEMINI_MODEL"] = candidate
+                break
+            except Exception as err:
+                last_err = err
+                err_str = str(err)
+                suggested = _extract_suggested_model(err_str)
+                if suggested and suggested not in candidates and suggested != candidate:
+                    candidates.insert(0, suggested)
+                if not any(code in err_str.lower() for code in ("404", "503", "429", "high demand", "overloaded", "unavailable")):
+                    break
+        if response is None and last_err is not None:
+            raise last_err
 
         if not response or not response.text:
             return {"transcription": "", "error": "Empty response"}
@@ -1121,13 +1137,14 @@ async def setup_save(payload: SetupSavePayload):
 
 @app.post("/setup/test-llm")
 def setup_test_llm(payload: SetupTestLLMPayload):
-    """Validate a BYOK Gemini API key via fast REST HTTPS (10s timeout) and auto-resolve the active Flash model."""
+    """Validate a BYOK Gemini API key via fast REST HTTPS (10s timeout) with 503 resilience."""
     key = (payload.gemini_api_key or "").strip() or os.getenv("GEMINI_API_KEY")
     if not key:
         return {"ok": False, "message": "Cole a chave do Gemini antes de testar."}
 
     candidates = list(dict.fromkeys([get_llm_config()["model_name"], *FALLBACK_GEMINI_MODELS]))
     last_err = ""
+    saw_503 = False
 
     while candidates:
         candidate = candidates.pop(0)
@@ -1142,17 +1159,37 @@ def setup_test_llm(payload: SetupTestLLMPayload):
                     "ok": True,
                     "message": f"Conexão com o Gemini ({candidate}) funcionando perfeitamente!",
                 }
+            if res.status_code == 503:
+                saw_503 = True
             err_msg = res.text
             try:
                 err_msg = res.json().get("error", {}).get("message", res.text)
             except Exception:
                 pass
             last_err = f"{res.status_code} {err_msg}"
+            if res.status_code in (400, 403) and "api_key_invalid" in res.text.lower():
+                break
             suggested = _extract_suggested_model(last_err)
             if suggested and suggested not in candidates and suggested != candidate:
                 candidates.insert(0, suggested)
         except Exception as exc:
             last_err = str(exc)
+
+    # Fallback validation: if models returned 503 high demand, verify key against /v1beta/models
+    if saw_503:
+        try:
+            models_res = requests.get(
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={key}",
+                timeout=8,
+            )
+            if models_res.status_code == 200:
+                genai.configure(api_key=key, transport="rest")
+                return {
+                    "ok": True,
+                    "message": "Chave do Gemini válida! (Servidores gratuitos do Google em pico de demanda agora; fallback automático ativado).",
+                }
+        except Exception:
+            pass
 
     return {"ok": False, "message": f"Não foi possível conectar ao Gemini: {last_err[:220]}"}
 
@@ -1180,6 +1217,88 @@ def setup_test_voice(payload: SetupTestVoicePayload):
         raise HTTPException(status_code=500, detail="Não foi possível gerar o áudio de teste.")
     media_type = "audio/mpeg" if audio_path.endswith(".mp3") else "audio/ogg"
     return FileResponse(audio_path, media_type=media_type)
+
+
+# ── In-App Auto-Updater from GitHub Releases (main -> Release -> /VERYSILENT) ─
+
+GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/marcellopato/neo-js/releases/latest"
+GITHUB_DIRECT_EXE_URL = "https://github.com/marcellopato/neo-js/releases/latest/download/Neo-Assistente-Setup.exe"
+
+
+def _get_local_build_commit() -> str:
+    for base in (_APP_DATA_DIR, _BUNDLE_DIR):
+        info_path = os.path.join(base, "build_info.json")
+        if os.path.exists(info_path):
+            try:
+                with open(info_path, "r", encoding="utf-8") as f:
+                    return str(json.load(f).get("commit", ""))[:12]
+            except Exception:
+                pass
+    return ""
+
+
+@app.get("/setup/check-update")
+def setup_check_update():
+    """Check GitHub Releases for a newer Windows .exe build published from main."""
+    import re
+    local_commit = _get_local_build_commit()
+    try:
+        res = requests.get(GITHUB_LATEST_RELEASE_API, timeout=8)
+        if res.status_code != 200:
+            return {"ok": False, "update_available": False, "message": "Não foi possível consultar o GitHub."}
+        data = res.json()
+        body = data.get("body") or ""
+        m = re.search(r"Commit:\s*([0-9a-fA-F]{7,40})", body)
+        remote_commit = m.group(1)[:12] if m else ""
+        published_at = data.get("published_at") or ""
+
+        if local_commit and remote_commit:
+            update_available = not remote_commit.startswith(local_commit[:7])
+        else:
+            update_available = bool(remote_commit)
+
+        return {
+            "ok": True,
+            "update_available": update_available,
+            "local_commit": local_commit or "desconhecido",
+            "remote_commit": remote_commit or "latest",
+            "published_at": published_at,
+            "download_url": GITHUB_DIRECT_EXE_URL,
+            "message": (
+                f"Nova versão disponível ({remote_commit[:7]})!"
+                if update_available
+                else f"Seu Neo já está na versão mais recente ({local_commit[:7] or 'atual'})."
+            ),
+        }
+    except Exception as exc:
+        return {"ok": False, "update_available": False, "message": f"Erro ao verificar atualização: {exc}"}
+
+
+@app.post("/setup/apply-update")
+def setup_apply_update():
+    """Download the latest Neo-Assistente-Setup.exe via Python (no SmartScreen flag) and run /VERYSILENT."""
+    import tempfile
+    if os.name != "nt":
+        return {"ok": False, "message": "Atualização automática via .exe disponível apenas no Windows."}
+    try:
+        target_exe = os.path.join(tempfile.gettempdir(), "Neo-Assistente-Setup-Update.exe")
+        with requests.get(GITHUB_DIRECT_EXE_URL, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            with open(target_exe, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
+
+        subprocess.Popen(
+            [target_exe, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+            close_fds=True,
+        )
+        return {
+            "ok": True,
+            "message": "Atualização baixada! O Neo vai fechar e reabrir atualizado sozinho em cerca de 15 segundos...",
+        }
+    except Exception as exc:
+        return {"ok": False, "message": f"Falha ao baixar/instalar atualização: {str(exc)[:180]}"}
 
 
 if __name__ == "__main__":
