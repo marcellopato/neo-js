@@ -51,6 +51,13 @@ DEFAULT_WAKE_PHRASES = (
     "ei mil",
     "oi mil",
     "ok mil",
+    "em mil",
+    "em meu",
+    "em nil",
+    "em niu",
+    "em neo",
+    "e mil",
+    "hein mil",
     "hey neo",
     "hey niu",
     "ola neo",
@@ -59,8 +66,18 @@ DEFAULT_WAKE_PHRASES = (
 )
 
 _WAKE_REGEX = re.compile(
-    r"\b(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e)\s+(?:neo|niu|nil|new|nio|nel|neu|meu|mil|ninho)\b"
+    r"\b(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e|em|en|hem|hein|um)\s+(?:neo|niu|nil|new|nio|nel|neu|meu|mil|ninho)\b"
 )
+
+
+def extract_command_after_wake(text: str) -> str:
+    """If the user spoke a command in the same breath as the wake phrase (e.g. 'em mil leia meus emails'), extract it."""
+    norm = re.sub(r"\s+", " ", _normalize_text(text))
+    m = _WAKE_REGEX.search(norm)
+    if not m:
+        return ""
+    remainder = norm[m.end():].strip()
+    return remainder if len(remainder) >= 4 else ""
 DEFAULT_BACKEND_URL = os.getenv("NEO_BACKEND_URL", "http://127.0.0.1:5000")
 
 
@@ -172,6 +189,13 @@ def _make_beep_wav(freq: int, duration_ms: int, volume: float = 0.35) -> bytes:
     return _pcm_to_wav_bytes(samples, SAMPLE_RATE)
 
 
+def play_cue_async(cue_name: str | None) -> None:
+    """Play audio cue in a daemon thread so microphone capture never drops frames."""
+    if not cue_name:
+        return
+    threading.Thread(target=play_cue, args=(cue_name,), daemon=True).start()
+
+
 def play_cue(cue_name: str | None) -> None:
     """Play short non-verbal audio cues (beeps on Windows) for eyes-free feedback."""
     if not cue_name:
@@ -193,6 +217,25 @@ def play_cue(cue_name: str | None) -> None:
             pass
     else:
         print(f"[VoiceCue] ({cue_name})")
+
+
+def chat_with_text(
+    message: str,
+    backend_url: str = DEFAULT_BACKEND_URL,
+    internal_token: str | None = None,
+) -> str:
+    """Send already-transcribed text to Neo backend /chat and return the reply."""
+    token = internal_token or os.getenv("INTERNAL_API_KEY", "")
+    headers = {"X-Neo-Token": token}
+    base = backend_url.rstrip("/")
+    res_c = requests.post(
+        f"{base}/chat",
+        json={"message": message},
+        headers=headers,
+        timeout=120,
+    )
+    res_c.raise_for_status()
+    return (res_c.json().get("response") or "").strip()
 
 
 def transcribe_and_chat(
@@ -217,14 +260,7 @@ def transcribe_and_chat(
     if not transcript:
         return "", ""
 
-    res_c = requests.post(
-        f"{base}/chat",
-        json={"message": transcript},
-        headers=headers,
-        timeout=120,
-    )
-    res_c.raise_for_status()
-    reply = (res_c.json().get("response") or "").strip()
+    reply = chat_with_text(transcript, backend_url=backend_url, internal_token=token)
     return transcript, reply
 
 
@@ -342,44 +378,110 @@ def run_voice_loop(
     recognizer = KaldiRecognizer(model, SAMPLE_RATE)
 
     print("[Voice] Neo ouvindo em modo standby. Diga 'Ei Neo' para começar.")
+    last_partial = ""
 
     while True:
-        # 1. Wait for wake word while IDLE
+        # 1. Wait for wake word while IDLE (keep a 1-second pre-buffer of PCM so speech in one breath isn't lost)
         if sm.state == VoiceState.IDLE:
+            from collections import deque
+
+            pre_buffer: deque[bytes] = deque(maxlen=4)
+            captured_chunks: list[bytes] = []
+            vosk_heard_command = ""
+
             with sd.RawInputStream(
                 samplerate=SAMPLE_RATE, blocksize=4000, dtype="int16", channels=1
             ) as stream:
                 while sm.state == VoiceState.IDLE:
                     data, _ = stream.read(4000)
                     raw_bytes = bytes(data)
+                    pre_buffer.append(raw_bytes)
                     if recognizer.AcceptWaveform(raw_bytes):
                         text = json.loads(recognizer.Result()).get("text", "")
                     else:
                         text = json.loads(recognizer.PartialResult()).get("partial", "")
 
-                    if text:
+                    if text and text != last_partial:
+                        last_partial = text
                         print(f"[Voice/Vosk] Ouvido: '{text}'")
 
                     cue = sm.on_wake_word(text)
                     if cue:
+                        print(f"[Voice] Gatilho reconhecido ('{text}')! Captando comando sem fechar microfone...")
+                        play_cue_async(cue)
+                        captured_chunks.extend(pre_buffer)
+
+                        # Continue reading on the SAME open stream until 1.6s of silence after speech
+                        start_t = time.monotonic()
+                        last_voice_t = start_t
+                        speech_active = bool(extract_command_after_wake(text))
+                        while True:
+                            d2, _ = stream.read(4000)
+                            b2 = bytes(d2)
+                            captured_chunks.append(b2)
+                            now_t = time.monotonic()
+                            if recognizer.AcceptWaveform(b2):
+                                t2 = json.loads(recognizer.Result()).get("text", "")
+                            else:
+                                t2 = json.loads(recognizer.PartialResult()).get("partial", "")
+                            if t2 and t2 != last_partial:
+                                last_partial = t2
+                                print(f"[Voice/Vosk] Captando: '{t2}'")
+                            if _pcm_rms(b2) >= 160.0:
+                                speech_active = True
+                                last_voice_t = now_t
+                            if speech_active and (now_t - last_voice_t) >= 1.6:
+                                break
+                            if not speech_active and (now_t - start_t) >= 7.0:
+                                break
+                            if (now_t - start_t) >= 18.0:
+                                break
+
+                        final_vosk = json.loads(recognizer.FinalResult()).get("text", "") or last_partial
                         recognizer.Reset()
-                        play_cue(cue)
+                        last_partial = ""
+                        vosk_heard_command = extract_command_after_wake(final_vosk) or final_vosk
                         break
 
-        # 2. Capture user utterance (initial or follow-up)
+        # 2. Capture user utterance (initial from open stream or follow-up)
         if sm.state in (VoiceState.LISTENING, VoiceState.FOLLOWUP):
-            wait_sec = sm.followup_seconds if sm.state == VoiceState.FOLLOWUP else 8.0
-            wav_bytes = record_until_silence(max_wait_seconds=wait_sec)
-            if not wav_bytes:
-                play_cue(sm.on_silence_timeout())
+            if sm.state == VoiceState.FOLLOWUP:
+                print(f"[Voice] Janela de resposta aberta por {sm.followup_seconds}s...")
+                wav_bytes = record_until_silence(max_wait_seconds=sm.followup_seconds)
+                vosk_heard_command = ""
+            else:
+                wav_bytes = _pcm_to_wav_bytes(captured_chunks) if captured_chunks else None
+
+            if not wav_bytes and not vosk_heard_command:
+                print("[Voice] Silêncio detectado, voltando ao modo standby.")
+                play_cue_async(sm.on_silence_timeout())
                 continue
-            play_cue(sm.on_speech_captured(wav_bytes))
+            play_cue_async(sm.on_speech_captured(wav_bytes or b"inline"))
 
             # 3. Transcribe + Chat via Neo backend
             try:
-                transcript, reply = transcribe_and_chat(wav_bytes, backend_url=backend_url)
+                transcript = ""
+                reply = ""
+                if wav_bytes:
+                    print("[Voice] Enviando áudio captado para o Gemini transcrever e responder...")
+                    try:
+                        transcript, reply = transcribe_and_chat(wav_bytes, backend_url=backend_url)
+                        cleaned_tr = extract_command_after_wake(transcript)
+                        if cleaned_tr:
+                            transcript = cleaned_tr
+                    except Exception as tr_err:
+                        print(f"[Voice] Aviso na transcrição de áudio ({tr_err}), usando transcrição local Vosk...")
+
+                if (not transcript or not reply) and vosk_heard_command:
+                    cmd_txt = extract_command_after_wake(vosk_heard_command) or vosk_heard_command
+                    if not matches_wake_phrase(cmd_txt) or len(cmd_txt.split()) > 2:
+                        transcript = cmd_txt
+                        print(f"[Voice] Consultando Gemini com texto captado: '{transcript}'")
+                        reply = chat_with_text(transcript, backend_url=backend_url)
+
                 if not transcript or not reply:
-                    play_cue(sm.on_error("empty"))
+                    print("[Voice] Pedido vazio após o gatilho. Voltando ao standby.")
+                    play_cue_async(sm.on_error("empty"))
                     continue
                 print(f"[Voice] Você: {transcript}")
                 print(f"[Voice] Neo: {reply}")
@@ -388,17 +490,20 @@ def run_voice_loop(
                 # 4. Speak response aloud with Esc interrupt support
                 audio_path = tts_engine.generate_audio(reply)
                 if audio_path and os.path.exists(audio_path):
+                    print(f"[Voice] Reproduzindo resposta em voz alta ({audio_path})...")
                     stop_event.clear()
                     interrupted = play_audio_interruptible(audio_path, stop_event)
                     if interrupted:
+                        print("[Voice] Fala interrompida via Esc.")
                         sm.on_interrupt()
                     else:
+                        print("[Voice] Fala concluída. Microfone reaberto para resposta contínua...")
                         sm.on_speaking_finished()
                 else:
                     sm.on_speaking_finished()
             except Exception as exc:
                 print(f"[Voice] Erro no ciclo de voz: {exc}")
-                play_cue(sm.on_error(str(exc)))
+                play_cue_async(sm.on_error(str(exc)))
 
 
 def test_microphone_sample(duration_seconds: float = 3.0) -> dict:

@@ -74,6 +74,9 @@ def _synthesize_edge_tts(text: str, filepath: str, voice: str, rate: str) -> Non
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             pool.submit(asyncio.run, _run()).result(timeout=12.0)
 
+    if not os.path.exists(filepath) or os.path.getsize(filepath) < 256:
+        raise RuntimeError("edge-tts gerou arquivo de áudio vazio")
+
 
 def _synthesize_gtts(text: str, filepath: str) -> None:
     """Fallback speech synthesis using gTTS (pt-BR)."""
@@ -101,16 +104,25 @@ def generate_audio(text: str) -> str | None:
     try:
         print(f"[TTS] Gerando áudio neural via edge-tts ({voice}, {rate}): {mp3_path}")
         _synthesize_edge_tts(clean_text, mp3_path, voice, rate)
+        size = os.path.getsize(mp3_path) if os.path.exists(mp3_path) else 0
+        print(f"[TTS] Áudio neural gerado ({size} bytes): {mp3_path}")
         return mp3_path
     except Exception as edge_err:
         print(f"[TTS Warning] edge-tts falhou ({edge_err}), usando fallback gTTS...")
+        try:
+            if os.path.exists(mp3_path):
+                os.remove(mp3_path)
+        except OSError:
+            pass
 
-    # Fallback: gTTS (.ogg)
-    ogg_path = os.path.join(AUDIO_OUTPUT_DIR, f"neo_voice_{uid}.ogg")
+    # Fallback: gTTS (.mp3)
+    fb_path = os.path.join(AUDIO_OUTPUT_DIR, f"neo_voice_{uid}_fb.mp3")
     try:
-        print(f"[TTS] Gerando áudio via gTTS fallback: {ogg_path}")
-        _synthesize_gtts(clean_text, ogg_path)
-        return ogg_path
+        print(f"[TTS] Gerando áudio via gTTS fallback: {fb_path}")
+        _synthesize_gtts(clean_text, fb_path)
+        size = os.path.getsize(fb_path) if os.path.exists(fb_path) else 0
+        print(f"[TTS] Áudio gTTS gerado ({size} bytes): {fb_path}")
+        return fb_path
     except Exception as gtts_err:
         print(f"[TTS Error] Falha ao gerar áudio (gTTS fallback): {gtts_err}")
         return None

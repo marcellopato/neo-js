@@ -135,7 +135,7 @@ class TestTTSEngine(unittest.TestCase):
             ) as mock_edge, patch.object(tts_engine, "_synthesize_gtts") as mock_gtts:
                 path = tts_engine.generate_audio("Teste de fallback")
                 self.assertIsNotNone(path)
-                self.assertTrue(path.endswith(".ogg"))
+                self.assertTrue(path.endswith(".mp3") or path.endswith(".ogg"))
                 mock_edge.assert_called_once()
                 mock_gtts.assert_called_once()
 

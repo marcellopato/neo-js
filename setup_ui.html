@@ -210,7 +210,7 @@
         <button type="button" class="secondary" onclick="testVoice()">Ouvir a voz do Neo</button>
         <button type="button" class="secondary" onclick="testMic()">Testar Microfone (3 segundos)</button>
       </div>
-      <audio id="voicePlayer" style="display:none;"></audio>
+      <audio id="voicePlayer" controls style="display:none; width:100%; margin-top:12px;"></audio>
       <div id="voiceStatus" class="status" role="status" aria-live="polite"></div>
       <div id="micStatus" class="status" role="status" aria-live="polite"></div>
     </section>
@@ -370,6 +370,7 @@
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const player = document.getElementById("voicePlayer");
+        player.style.display = "block";
         player.src = url;
         await player.play();
         showStatus("voiceStatus", true, "Reproduzindo a voz do Neo!");

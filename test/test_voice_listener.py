@@ -10,6 +10,12 @@ class TestVoiceListener(unittest.TestCase):
         self.assertTrue(vl.matches_wake_phrase("ei niu"))
         self.assertTrue(vl.matches_wake_phrase("ok nil"))
         self.assertTrue(vl.matches_wake_phrase("ei mil"))
+        self.assertTrue(vl.matches_wake_phrase("em mil"))
+        self.assertTrue(vl.matches_wake_phrase("em mil leia meus emails"))
+        self.assertEqual(
+            vl.extract_command_after_wake("em mil leia meus emails"),
+            "leia meus emails",
+        )
         self.assertTrue(vl.matches_wake_phrase("oi meu"))
         self.assertTrue(vl.matches_wake_phrase("Oi, Neo! Lê meus emails"))
         self.assertTrue(vl.matches_wake_phrase("ok neo"))
