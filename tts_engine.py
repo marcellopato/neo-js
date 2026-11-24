@@ -29,7 +29,7 @@ _EMOJI_RE = re.compile(
 
 
 def sanitize_for_speech(text: str) -> str:
-    """Strip markdown syntax, raw URLs in links, and emojis for natural spoken output."""
+    """Strip markdown syntax, raw URLs in links, and emojis, and normalize 'Neo' pronunciation to 'Níu'."""
     if not text:
         return ""
     cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)  # [label](url) -> label
@@ -37,6 +37,8 @@ def sanitize_for_speech(text: str) -> str:
     cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)  # inline code -> inner text
     cleaned = re.sub(r"[*#~>|]", "", cleaned)  # strip markdown punctuation
     cleaned = _EMOJI_RE.sub("", cleaned)
+    # Pronounce "Neo" as "Níu" (Matrix style) in PT-BR TTS engines instead of "Nél"
+    cleaned = re.sub(r"\b[Nn][Ee][Oo]\b", "Níu", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned
 

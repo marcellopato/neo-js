@@ -208,9 +208,11 @@
 
       <div class="row">
         <button type="button" class="secondary" onclick="testVoice()">Ouvir a voz do Neo</button>
+        <button type="button" class="secondary" onclick="testMic()">Testar Microfone (3 segundos)</button>
       </div>
       <audio id="voicePlayer" style="display:none;"></audio>
       <div id="voiceStatus" class="status" role="status" aria-live="polite"></div>
+      <div id="micStatus" class="status" role="status" aria-live="polite"></div>
     </section>
 
     <!-- PASSO 4: WHATSAPP OPCIONAL -->
@@ -363,6 +365,19 @@
         showStatus("voiceStatus", true, "Reproduzindo a voz do Neo!");
       } catch (e) {
         showStatus("voiceStatus", false, "Não foi possível reproduzir o áudio: " + e.message);
+      }
+    }
+
+    async function testMic() {
+      showStatus("micStatus", true, "Ouvindo por 3 segundos... Diga 'Ei Neo' (Ei Níu) agora!");
+      try {
+        const res = await fetchWithTimeout("/setup/test-mic", {
+          method: "POST"
+        }, 12000);
+        const data = await res.json();
+        showStatus("micStatus", !!data.ok, data.message || "Teste concluído.");
+      } catch (e) {
+        showStatus("micStatus", false, "Erro ao testar microfone: " + e.message);
       }
     }
 

@@ -23,7 +23,44 @@ import tts_engine
 
 load_dotenv()
 
-DEFAULT_WAKE_PHRASES = ("ei neo", "oi neo", "ok neo")
+DEFAULT_WAKE_PHRASES = (
+    "ei neo",
+    "oi neo",
+    "ok neo",
+    "ei niu",
+    "oi niu",
+    "ok niu",
+    "ei nil",
+    "oi nil",
+    "ok nil",
+    "ei new",
+    "oi new",
+    "ok new",
+    "ei nio",
+    "oi nio",
+    "ok nio",
+    "ei nel",
+    "oi nel",
+    "ok nel",
+    "ei neu",
+    "oi neu",
+    "ok neu",
+    "ei meu",
+    "oi meu",
+    "ok meu",
+    "ei mil",
+    "oi mil",
+    "ok mil",
+    "hey neo",
+    "hey niu",
+    "ola neo",
+    "ola niu",
+    "ola nil",
+)
+
+_WAKE_REGEX = re.compile(
+    r"\b(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e)\s+(?:neo|niu|nil|new|nio|nel|neu|meu|mil|ninho)\b"
+)
 DEFAULT_BACKEND_URL = os.getenv("NEO_BACKEND_URL", "http://127.0.0.1:5000")
 
 
@@ -59,11 +96,13 @@ def _normalize_text(text: str) -> str:
 
 
 def matches_wake_phrase(text: str, phrases: tuple[str, ...] = DEFAULT_WAKE_PHRASES) -> bool:
-    """Return True if recognized speech contains any configured wake phrase."""
+    """Return True if recognized speech contains any configured wake phrase (including PT-BR phonetic variants for 'Ei Niu')."""
     norm = re.sub(r"\s+", " ", _normalize_text(text))
     if not norm:
         return False
-    return any(_normalize_text(p) in norm for p in phrases)
+    if any(_normalize_text(p) in norm for p in phrases):
+        return True
+    return bool(_WAKE_REGEX.search(norm))
 
 
 class VoiceSessionStateMachine:
@@ -123,22 +162,33 @@ class VoiceSessionStateMachine:
         return "error"
 
 
+def _make_beep_wav(freq: int, duration_ms: int, volume: float = 0.35) -> bytes:
+    """Synthesize a clean sine-wave WAV in memory so beeps work on all Windows speakers/headphones."""
+    num_samples = int(SAMPLE_RATE * (duration_ms / 1000.0))
+    samples = []
+    for i in range(num_samples):
+        val = int(32767 * volume * math.sin(2.0 * math.pi * freq * (i / SAMPLE_RATE)))
+        samples.append(struct.pack("<h", val))
+    return _pcm_to_wav_bytes(samples, SAMPLE_RATE)
+
+
 def play_cue(cue_name: str | None) -> None:
     """Play short non-verbal audio cues (beeps on Windows) for eyes-free feedback."""
     if not cue_name:
         return
     tones = {
-        "start": (880, 140),       # high short beep: listening
-        "processing": (520, 110),  # mid beep: thinking
-        "timeout": (400, 120),     # soft low beep: timed out
-        "error": (280, 260),       # low longer beep: error
+        "start": (880, 180),       # high beep: listening
+        "processing": (520, 130),  # mid beep: thinking
+        "timeout": (380, 140),     # soft low beep: timed out
+        "error": (260, 260),       # low longer beep: error
     }
-    freq, duration_ms = tones.get(cue_name, (600, 100))
+    freq, duration_ms = tones.get(cue_name, (600, 120))
     if sys.platform == "win32":
         try:
             import winsound
 
-            winsound.Beep(freq, duration_ms)
+            wav_data = _make_beep_wav(freq, duration_ms)
+            winsound.PlaySound(wav_data, winsound.SND_MEMORY)
         except Exception:
             pass
     else:
@@ -203,7 +253,7 @@ def record_until_silence(
     max_wait_seconds: float = 8.0,
     silence_seconds: float = 1.6,
     max_record_seconds: float = 20.0,
-    rms_threshold: float = 450.0,
+    rms_threshold: float = 180.0,
 ) -> bytes | None:
     """Record 16kHz mono PCM from default microphone until speech ends with silence."""
     import sounddevice as sd
@@ -301,10 +351,14 @@ def run_voice_loop(
             ) as stream:
                 while sm.state == VoiceState.IDLE:
                     data, _ = stream.read(4000)
-                    if recognizer.AcceptWaveform(bytes(data)):
+                    raw_bytes = bytes(data)
+                    if recognizer.AcceptWaveform(raw_bytes):
                         text = json.loads(recognizer.Result()).get("text", "")
                     else:
                         text = json.loads(recognizer.PartialResult()).get("partial", "")
+
+                    if text:
+                        print(f"[Voice/Vosk] Ouvido: '{text}'")
 
                     cue = sm.on_wake_word(text)
                     if cue:
@@ -345,6 +399,56 @@ def run_voice_loop(
             except Exception as exc:
                 print(f"[Voice] Erro no ciclo de voz: {exc}")
                 play_cue(sm.on_error(str(exc)))
+
+
+def test_microphone_sample(duration_seconds: float = 3.0) -> dict:
+    """Record a short sample from the default microphone, compute RMS volume, and test Vosk recognition."""
+    import sounddevice as sd
+
+    block_size = 4000
+    num_blocks = max(1, int((SAMPLE_RATE * duration_seconds) / block_size))
+    peak_rms = 0.0
+    chunks: list[bytes] = []
+
+    with sd.RawInputStream(
+        samplerate=SAMPLE_RATE, blocksize=block_size, dtype="int16", channels=1
+    ) as stream:
+        for _ in range(num_blocks):
+            data, _ = stream.read(block_size)
+            raw = bytes(data)
+            chunks.append(raw)
+            rms = _pcm_rms(raw)
+            if rms > peak_rms:
+                peak_rms = rms
+
+    heard_text = ""
+    if os.path.isdir(DEFAULT_VOSK_MODEL_DIR):
+        try:
+            from vosk import KaldiRecognizer, Model
+
+            model = Model(DEFAULT_VOSK_MODEL_DIR)
+            rec = KaldiRecognizer(model, SAMPLE_RATE)
+            for c in chunks:
+                rec.AcceptWaveform(c)
+            heard_text = (json.loads(rec.FinalResult()).get("text") or "").strip()
+        except Exception as exc:
+            heard_text = f"(erro Vosk: {exc})"
+
+    wake_detected = matches_wake_phrase(heard_text)
+    has_signal = peak_rms >= 150.0
+    return {
+        "ok": has_signal,
+        "peak_rms": round(peak_rms, 1),
+        "heard_text": heard_text,
+        "wake_detected": wake_detected,
+        "message": (
+            f"Microfone funcionando! Volume máximo: {int(peak_rms)}. "
+            + (f"Ouvido: '{heard_text}'." if heard_text else "Som captado (nenhuma palavra reconhecida no trecho).")
+            + (" Gatilho 'Ei Níu' reconhecido!" if wake_detected else "")
+            if has_signal
+            else f"Microfone muito baixo ou sem som (Volume: {int(peak_rms)}). Verifique o microfone padrão do Windows."
+        ),
+    }
 
 
 if __name__ == "__main__":

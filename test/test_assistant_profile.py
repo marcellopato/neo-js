@@ -89,7 +89,7 @@ class TestTTSEngine(unittest.TestCase):
     def test_sanitize_for_speech_removes_markdown_and_emojis(self):
         import tts_engine
 
-        raw = "## Olá *Maria*! 🚀 Veja [o boleto](https://ex.com) e `codigo_1`."
+        raw = "## Olá *Maria*! Eu sou o Neo 🚀 Veja [o boleto](https://ex.com) e `codigo_1`."
         clean = tts_engine.sanitize_for_speech(raw)
         self.assertNotIn("*", clean)
         self.assertNotIn("#", clean)
@@ -97,6 +97,7 @@ class TestTTSEngine(unittest.TestCase):
         self.assertNotIn("🚀", clean)
         self.assertNotIn("https://ex.com", clean)
         self.assertIn("Olá Maria!", clean)
+        self.assertIn("Níu", clean)
         self.assertIn("o boleto", clean)
         self.assertIn("codigo_1", clean)
 

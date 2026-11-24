@@ -1219,6 +1219,20 @@ def setup_test_voice(payload: SetupTestVoicePayload):
     return FileResponse(audio_path, media_type=media_type)
 
 
+@app.post("/setup/test-mic")
+def setup_test_mic():
+    """Record 3 seconds from the default microphone and report volume + Vosk wake-word recognition."""
+    try:
+        import voice_listener
+
+        return voice_listener.test_microphone_sample(duration_seconds=3.0)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "message": f"Erro ao acessar o microfone: {str(exc)[:180]}",
+        }
+
+
 # ── In-App Auto-Updater from GitHub Releases (main -> Release -> /VERYSILENT) ─
 
 GITHUB_LATEST_RELEASE_API = "https://api.github.com/repos/marcellopato/neo-js/releases/latest"

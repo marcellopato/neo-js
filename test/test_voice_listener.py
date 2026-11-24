@@ -7,6 +7,10 @@ class TestVoiceListener(unittest.TestCase):
         import voice_listener as vl
 
         self.assertTrue(vl.matches_wake_phrase("ei neo"))
+        self.assertTrue(vl.matches_wake_phrase("ei niu"))
+        self.assertTrue(vl.matches_wake_phrase("ok nil"))
+        self.assertTrue(vl.matches_wake_phrase("ei mil"))
+        self.assertTrue(vl.matches_wake_phrase("oi meu"))
         self.assertTrue(vl.matches_wake_phrase("Oi, Neo! Lê meus emails"))
         self.assertTrue(vl.matches_wake_phrase("ok neo"))
         self.assertFalse(vl.matches_wake_phrase("bom dia maria"))
