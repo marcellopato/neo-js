@@ -72,10 +72,17 @@ class TestAssistantProfile(unittest.TestCase):
             self.assertEqual(cfg["gemini_api_key"], "env-gemini-key")
             self.assertEqual(cfg["grok_api_key"], "env-grok-key")
             self.assertEqual(cfg["base_url"], "https://proxy.example.com")
-            self.assertEqual(cfg["model_name"], "gemini-2.5-flash")
+            self.assertEqual(cfg["model_name"], "gemini-3.8-flash")
 
             cfg_override = agent.get_llm_config(api_key="header-key")
             self.assertEqual(cfg_override["gemini_api_key"], "header-key")
+
+    def test_extract_suggested_model_from_404_message(self):
+        err = (
+            "404 This model models/gemini-2.5-flash is no longer available to new users. "
+            "Please update your code to use models/gemini-3.8-flash for the latest features."
+        )
+        self.assertEqual(agent._extract_suggested_model(err), "gemini-3.8-flash")
 
 
 class TestTTSEngine(unittest.TestCase):

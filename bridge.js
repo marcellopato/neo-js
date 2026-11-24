@@ -370,7 +370,7 @@ async function transcribeAudio(base64Data, mimeType) {
 
     try {
         const response = await genAI.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: process.env.NEO_GEMINI_MODEL || 'gemini-3.8-flash',
             contents: [
                 {
                     role: 'user',

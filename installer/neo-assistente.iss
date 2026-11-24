@@ -32,3 +32,12 @@ Name: "{userstartup}\Neo Assistente por Voz"; Filename: "{app}\NeoAssistente.exe
 
 [Run]
 Filename: "{app}\NeoAssistente.exe"; Parameters: "--setup"; Description: "Abrir o Neo Assistente agora para configurar"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM NeoAssistente.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := '';
+end;

@@ -183,13 +183,24 @@ def get_system_prompt(profile: str | None = None) -> str:
     return SYSTEM_PROMPT
 
 
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+FALLBACK_GEMINI_MODELS = ("gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash")
+
+
+def _extract_suggested_model(error_text: str) -> str | None:
+    """Extract replacement model name if Google 404 says 'use models/gemini-...'."""
+    import re
+    match = re.search(r"use\s+models/(gemini-[a-zA-Z0-9._-]+)", error_text or "", re.IGNORECASE)
+    return match.group(1) if match else None
+
+
 def get_llm_config(api_key: str | None = None) -> dict:
     """Centralized BYOK / provider config seam for Gemini, Grok fallback, and future gateways."""
     return {
         "gemini_api_key": api_key or os.getenv("GEMINI_API_KEY"),
         "grok_api_key": os.getenv("GROK_API_KEY"),
         "base_url": os.getenv("NEO_LLM_BASE_URL") or None,
-        "model_name": os.getenv("NEO_GEMINI_MODEL", "gemini-2.5-flash"),
+        "model_name": os.getenv("NEO_GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
     }
 
 
@@ -591,13 +602,13 @@ async def chat_endpoint(
             print("[Agent] Quota/Tokens exceeded. Iniciando chain de fallback...")
             gemini_key = target_api_key or os.getenv("GEMINI_API_KEY")
 
-            # Fallback 2: Gemini 1.5 Flash via direct HTTP
+            # Fallback 2: Gemini Flash Latest via direct HTTP
             if gemini_key:
-                print("[Agent] Tentando Fallback 2: Gemini 1.5 Flash...")
+                print("[Agent] Tentando Fallback 2: Gemini Flash Latest...")
                 try:
                     gemini_url = (
                         "https://generativelanguage.googleapis.com/v1beta/models/"
-                        f"gemini-1.5-flash:generateContent?key={gemini_key}"
+                        f"gemini-flash-latest:generateContent?key={gemini_key}"
                     )
                     headers = {"Content-Type": "application/json"}
                     data = {
@@ -759,16 +770,29 @@ async def transcribe_audio(
 
         audio_bytes = b64.b64decode(payload.data)
 
+        active_model = get_llm_config()["model_name"]
         model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
+            model_name=active_model,
         )
 
         prompt = "Por favor, transcreva o audio desta mensagem em portugues e retorne APENAS o texto da transcricao literal de forma limpa, sem comentarios ou explicacoes."
 
-        response = model.generate_content([
-            prompt,
-            {"mime_type": payload.mimeType, "data": audio_bytes},
-        ])
+        try:
+            response = model.generate_content([
+                prompt,
+                {"mime_type": payload.mimeType, "data": audio_bytes},
+            ])
+        except Exception as first_err:
+            suggested = _extract_suggested_model(str(first_err))
+            if suggested and suggested != active_model:
+                os.environ["NEO_GEMINI_MODEL"] = suggested
+                model = genai.GenerativeModel(model_name=suggested)
+                response = model.generate_content([
+                    prompt,
+                    {"mime_type": payload.mimeType, "data": audio_bytes},
+                ])
+            else:
+                raise first_err
 
         if not response or not response.text:
             return {"transcription": "", "error": "Empty response"}
@@ -1053,6 +1077,8 @@ async def setup_save(payload: SetupSavePayload):
     }
     if payload.gemini_api_key:
         env_updates["GEMINI_API_KEY"] = payload.gemini_api_key.strip()
+    if os.getenv("NEO_GEMINI_MODEL"):
+        env_updates["NEO_GEMINI_MODEL"] = os.getenv("NEO_GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 
     _write_env_file(SETUP_ENV_PATH, env_updates)
     saved_env = _read_env_file(SETUP_ENV_PATH)
@@ -1095,19 +1121,33 @@ async def setup_save(payload: SetupSavePayload):
 
 @app.post("/setup/test-llm")
 async def setup_test_llm(payload: SetupTestLLMPayload):
-    """Validate a BYOK Gemini API key without exposing it."""
+    """Validate a BYOK Gemini API key and auto-resolve the active Flash model."""
     key = (payload.gemini_api_key or "").strip() or os.getenv("GEMINI_API_KEY")
     if not key:
         return {"ok": False, "message": "Cole a chave do Gemini antes de testar."}
-    try:
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
-        resp = model.generate_content("Responda apenas: OK")
-        if resp and resp.text:
-            return {"ok": True, "message": "Conexão com o Gemini funcionando perfeitamente!"}
-        return {"ok": False, "message": "O Gemini respondeu vazio. Verifique a chave."}
-    except Exception as exc:
-        return {"ok": False, "message": f"Não foi possível conectar ao Gemini: {str(exc)[:180]}"}
+
+    genai.configure(api_key=key)
+    candidates = list(dict.fromkeys([get_llm_config()["model_name"], *FALLBACK_GEMINI_MODELS]))
+    last_err = ""
+
+    while candidates:
+        candidate = candidates.pop(0)
+        try:
+            model = genai.GenerativeModel(model_name=candidate)
+            resp = model.generate_content("Responda apenas: OK")
+            if resp and resp.text:
+                os.environ["NEO_GEMINI_MODEL"] = candidate
+                return {
+                    "ok": True,
+                    "message": f"Conexão com o Gemini ({candidate}) funcionando perfeitamente!",
+                }
+        except Exception as exc:
+            last_err = str(exc)
+            suggested = _extract_suggested_model(last_err)
+            if suggested and suggested not in candidates and suggested != candidate:
+                candidates.insert(0, suggested)
+
+    return {"ok": False, "message": f"Não foi possível conectar ao Gemini: {last_err[:200]}"}
 
 
 @app.post("/setup/test-email")
