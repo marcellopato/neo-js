@@ -5,4 +5,5 @@ requests
 python-dotenv
 qdrant-client[fastembed]==1.16.1
 gTTS==2.5.4
+edge-tts>=6.1.0
 click>=8.4.2
