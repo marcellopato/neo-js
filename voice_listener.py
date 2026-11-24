@@ -25,7 +25,20 @@ load_dotenv()
 
 DEFAULT_WAKE_PHRASES = ("ei neo", "oi neo", "ok neo")
 DEFAULT_BACKEND_URL = os.getenv("NEO_BACKEND_URL", "http://127.0.0.1:5000")
-DEFAULT_VOSK_MODEL_DIR = os.path.join(os.path.dirname(__file__), "models", "vosk-pt")
+
+
+def _resolve_vosk_model_dir() -> str:
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        candidate = os.path.join(exe_dir, "models", "vosk-pt")
+        if os.path.isdir(candidate):
+            return candidate
+        meipass = getattr(sys, "_MEIPASS", exe_dir)
+        return os.path.join(meipass, "models", "vosk-pt")
+    return os.path.join(os.path.dirname(__file__), "models", "vosk-pt")
+
+
+DEFAULT_VOSK_MODEL_DIR = _resolve_vosk_model_dir()
 SAMPLE_RATE = 16000
 
 

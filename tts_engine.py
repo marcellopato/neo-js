@@ -3,11 +3,13 @@ import concurrent.futures
 import glob
 import os
 import re
+import sys
 import uuid
 from gtts import gTTS
 
-# Configuration
-AUDIO_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "audio_cache")
+# Configuration (PyInstaller-aware writable directory)
+_BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(__file__)
+AUDIO_OUTPUT_DIR = os.path.join(_BASE_DIR, "audio_cache")
 MAX_AUDIO_FILES = 50  # keep at most this many cached audio files
 DEFAULT_EDGE_VOICE = "pt-BR-FranciscaNeural"
 DEFAULT_EDGE_RATE = "+0%"

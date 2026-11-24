@@ -2,10 +2,12 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    Distance, VectorParams, PointStruct
-)
+try:
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import Distance, VectorParams, PointStruct
+except ImportError:
+    QdrantClient = None
+    Distance = VectorParams = PointStruct = None
 
 # QDRANT_HOST/QDRANT_PORT are read only when using remote Qdrant.
 # The current code uses local Qdrant (path="qdrant_data"), so these are
@@ -17,8 +19,10 @@ _client = None
 _embed_model = None  # singleton — loaded once, reused every call
 
 
-def _get_client() -> QdrantClient | None:
+def _get_client():
     global _client, _collection_ready
+    if QdrantClient is None:
+        return None
     if _client is None:
         try:
             _client = QdrantClient(

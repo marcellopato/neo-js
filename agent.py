@@ -911,9 +911,22 @@ async def reset_conversation(
 
 # ── Local Accessible Setup Wizard (/setup — localhost only, INV-3) ────────────
 
-SETUP_ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
+import sys as _sys
+
+_APP_DATA_DIR = (
+    os.path.dirname(_sys.executable)
+    if getattr(_sys, "frozen", False)
+    else os.path.dirname(__file__)
+)
+_BUNDLE_DIR = getattr(_sys, "_MEIPASS", _APP_DATA_DIR) if getattr(_sys, "frozen", False) else _APP_DATA_DIR
+
+SETUP_ENV_PATH = os.path.join(_APP_DATA_DIR, ".env")
 SETUP_ACCOUNTS_PATH = DEFAULT_ACCOUNTS_FILE
-SETUP_UI_PATH = os.path.join(os.path.dirname(__file__), "setup_ui.html")
+SETUP_UI_PATH = (
+    os.path.join(_APP_DATA_DIR, "setup_ui.html")
+    if os.path.exists(os.path.join(_APP_DATA_DIR, "setup_ui.html"))
+    else os.path.join(_BUNDLE_DIR, "setup_ui.html")
+)
 
 
 def _mask_secret(value: str | None) -> str:

@@ -9,13 +9,15 @@ import json
 import os
 import re
 import smtplib
+import sys
 from email.header import decode_header
 from email.message import EmailMessage
 from typing import Any
 
 import requests
 
-DEFAULT_ACCOUNTS_FILE = os.path.join(os.path.dirname(__file__), "email_accounts.json")
+_BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else os.path.dirname(__file__)
+DEFAULT_ACCOUNTS_FILE = os.path.join(_BASE_DIR, "email_accounts.json")
 MAX_EMAIL_BODY_CHARS = 3000
 
 

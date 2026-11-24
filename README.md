@@ -449,33 +449,38 @@ Neo.JS includes a dedicated **voice-first accessibility profile** (`NEO_PROFILE=
 - **🔒 Safe & BYOK-First:** Disables shell execution (`run_command`) and file editing (`edit_file`) in `assistant` mode and runs with your own `GEMINI_API_KEY` (with a clean `NEO_LLM_BASE_URL` seam for future managed plans).
 - **🪄 One-Click Windows Setup (No Terminal):** Double-click [`scripts/Instalar-Neo.bat`](scripts/Instalar-Neo.bat) to bootstrap Python via `winget`, install dependencies, download the offline `Vosk` `pt-BR` model, register silent Windows startup (`scripts/start-assistant-silent.vbs` via `pythonw.exe`), and open the high-contrast visual Setup Wizard at `http://127.0.0.1:5000/setup`.
 
-### 🪟 Windows Easy Install (No Terminal / No Git Required)
+### 🪟 Windows Easy Install (Single `.exe` — No Terminal, No Python Required)
 
-1. **Download Neo.JS:** Click [**Download ZIP**](https://github.com/marcellopato/neo-js/archive/refs/heads/main.zip) directly from GitHub.
-2. **Extract the folder:** Right-click the downloaded `neo-js-main.zip` → **Extract All...** (e.g. to `C:\Neo`).
-3. **Run the one-click installer:** Open the extracted folder → open the `scripts` folder → double-click **`Instalar-Neo.bat`**.
-   - If Windows SmartScreen asks for confirmation, click **More info** → **Run anyway**.
-   - The installer automatically installs Python (via `winget` if missing), sets up dependencies, downloads the offline `"Ei Neo"` voice model (~31 MB), creates a Desktop shortcut, and registers silent startup when Windows boots.
-4. **Configure in the Visual Setup Wizard:** When the high-contrast window opens (`http://127.0.0.1:5000/setup`):
-   - **Step 1:** Click the button to get a free **Gemini API Key** (BYOK), paste it, and click **Testar conexão**.
-   - **Step 2:** Click **+ Usar Outlook do Windows automaticamente** (for Classic Outlook Desktop) and/or add your **Gmail** (using a Google App Password) and click **Testar e-mail**.
-   - **Step 3:** Click **Ouvir a voz do Neo** to test audio playback.
-   - **Step 4:** Click **Salvar e Ativar Neo Assistente**.
-5. **Use by voice:** Say **"Ei Neo"** (wait for the short beep) and speak naturally (e.g. *"Lê meus e-mails novos"*). Press **`Esc`** anytime to stop Neo from speaking immediately.
+#### Option A — Standalone Windows Installer (`Neo-Assistente-Setup.exe`, Recommended)
+1. **Download the `.exe` installer:** Click [**Download `Neo-Assistente-Setup.exe`**](https://github.com/marcellopato/neo-js/releases/latest/download/Neo-Assistente-Setup.exe) from GitHub Releases.
+2. **Run the installer:** Double-click `Neo-Assistente-Setup.exe` (if Windows SmartScreen prompts, click **More info** → **Run anyway**) and click **Avançar → Instalar**.
+   - It already bundles Python, all audio/email packages, and the offline `"Ei Neo"` Portuguese voice model — nothing else to install.
+   - It creates the **Neo Assistente por Voz** shortcut on the Desktop, registers auto-start with Windows, and opens the Visual Setup Wizard automatically.
+
+#### Option B — From the Source `.zip` (`Instalar-Neo.bat`)
+1. Download the [**Source ZIP**](https://github.com/marcellopato/neo-js/archive/refs/heads/main.zip) and **Extract All...**.
+2. Open the extracted folder and double-click **`Instalar-Neo.bat`** right in the main folder *(do not click `install.js`, which is for the Linux/macOS Node CLI)*.
+
+#### Configuring in the Visual Setup Wizard (`http://127.0.0.1:5000/setup`)
+- **Step 1:** Click the button to get a free **Gemini API Key** (BYOK), paste it, and click **Testar conexão**.
+- **Step 2:** Click **+ Usar Outlook do Windows automaticamente** (for Classic Outlook Desktop) and/or add your **Gmail** (using a Google App Password) and click **Testar e-mail**.
+- **Step 3:** Click **Ouvir a voz do Neo** to test audio playback.
+- **Step 4:** Click **Salvar e Ativar Neo Assistente**.
+- **Use by voice:** Say **"Ei Neo"** (wait for the short beep) and speak naturally (e.g. *"Lê meus e-mails novos"*). Press **`Esc`** anytime to stop Neo from speaking immediately.
 
 <details>
-<summary>🇧🇷 Passo a passo rápido em Português (Windows para leigos)</summary>
+<summary>🇧🇷 Passo a passo rápido em Português (Instalador .exe para Windows)</summary>
 
-1. **Baixe o Neo:** clique em [**Baixar arquivo ZIP**](https://github.com/marcellopato/neo-js/archive/refs/heads/main.zip).
-2. **Extraia a pasta:** clique com o botão direito em `neo-js-main.zip` → **Extrair Tudo...** (por exemplo, em `C:\Neo`).
-3. **Instale com 1 duplo clique:** abra a pasta extraída → entre na pasta **`scripts`** → dê duplo clique em **`Instalar-Neo.bat`**.
-   - Se o Windows exibir aviso de segurança, clique em **Mais informações** → **Executar assim mesmo**.
-   - Aguarde alguns minutos: ele instala tudo automaticamente (Python, dependências, modelo de voz `"Ei Neo"` e inicialização automática com o Windows).
-4. **Configure na tela visual que vai abrir:**
+1. **Baixe o instalador `.exe`:** clique em [**Baixar `Neo-Assistente-Setup.exe`**](https://github.com/marcellopato/neo-js/releases/latest/download/Neo-Assistente-Setup.exe).
+2. **Instale:** dê duplo clique em **`Neo-Assistente-Setup.exe`** (se aparecer aviso do Windows, clique em **Mais informações** → **Executar assim mesmo**) e clique em **Avançar → Instalar**.
+   - Ele já traz tudo embutido (Python, bibliotecas de voz/e-mail e o modelo offline `"Ei Neo"`).
+3. **Configure na tela visual que vai abrir sozinha:**
    - Cole sua chave gratuita do **Gemini** (há um botão direto para criá-la) e clique em **Testar conexão**.
    - Clique em **+ Usar Outlook do Windows automaticamente** e/ou adicione seu **Gmail** (com Senha de App) e teste.
    - Clique em **Ouvir a voz do Neo** e depois em **Salvar e Ativar Neo Assistente**.
-5. **Pronto!** Daqui em diante o Neo inicia sozinho quando ligar o computador. Basta dizer **"Ei Neo"**, aguardar o bip e falar normalmente. Para interromper a leitura na hora, aperte **`Esc`**.
+4. **Pronto!** Daqui em diante o Neo inicia sozinho quando ligar o computador. Basta dizer **"Ei Neo"**, aguardar o bip e falar normalmente. Para interromper a leitura na hora, aperte **`Esc`**.
+
+*(Se preferir baixar pelo arquivo ZIP do código, extraia tudo e dê duplo clique em **`Instalar-Neo.bat`** na pasta principal — não clique em `install.js`.)*
 
 </details>
 

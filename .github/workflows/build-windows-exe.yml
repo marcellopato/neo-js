@@ -1,0 +1,83 @@
+name: Build Windows Installer (.exe)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent.py'
+      - 'voice_listener.py'
+      - 'email_tools.py'
+      - 'tts_engine.py'
+      - 'memory.py'
+      - 'neo_windows_app.py'
+      - 'setup_ui.html'
+      - 'installer/**'
+      - '.github/workflows/build-windows-exe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-generativeai>=0.8.0 fastapi uvicorn requests python-dotenv gTTS==2.5.4 edge-tts>=6.1.0 click>=8.4.2
+          pip install -r requirements-voice.txt
+          pip install pyinstaller
+
+      - name: Download offline PT-BR Vosk wake-word model (~31 MB)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "models" | Out-Null
+          $zipPath = Join-Path $env:TEMP "vosk-pt.zip"
+          Invoke-WebRequest -Uri "https://alphacephei.com/vosk/models/vosk-model-small-pt-0.3.zip" -OutFile $zipPath -UseBasicParsing
+          Expand-Archive -Path $zipPath -DestinationPath "models" -Force
+          Rename-Item -Path "models\vosk-model-small-pt-0.3" -NewName "vosk-pt"
+
+      - name: Build NeoAssistente.exe with PyInstaller
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --onedir --noconsole `
+            --name NeoAssistente `
+            --add-data "setup_ui.html;." `
+            --add-data "models\vosk-pt;models\vosk-pt" `
+            --collect-all vosk `
+            --collect-all sounddevice `
+            --collect-all edge_tts `
+            --hidden-import win32com.client `
+            --hidden-import pythoncom `
+            neo_windows_app.py
+
+      - name: Compile Neo-Assistente-Setup.exe with Inno Setup
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\neo-assistente.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Neo-Assistente-Setup
+          path: dist/Neo-Assistente-Setup.exe
+
+      - name: Publish Neo-Assistente-Setup.exe to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.1.0-windows
+          name: "Neo Assistente por Voz para Windows (Instalador .exe)"
+          body: |
+            Instalador completo com 1 clique para Windows 10/11 (**não precisa instalar Python nem usar terminal**).
+            Baixe **`Neo-Assistente-Setup.exe`**, dê duplo clique e siga a tela de configuração em alto contraste.
+          files: dist/Neo-Assistente-Setup.exe
+          make_latest: true
