@@ -3,7 +3,7 @@ import asyncio
 import json
 import subprocess
 from fastapi import FastAPI, HTTPException, Header
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import requests
@@ -13,6 +13,8 @@ import google.generativeai as genai
 load_dotenv()
 
 from memory import store_memory, retrieve_context
+from email_tools import EMAIL_TOOLS, DEFAULT_ACCOUNTS_FILE, build_adapter_from_entry
+import tts_engine
 
 
 # ── Rate limiter ──────────────────────────────────────────────────────────────
@@ -149,6 +151,48 @@ METODOLOGIA SDD (SPEC-DRIVEN DEVELOPMENT):
 - Para orientações de skills locais do sdd-agentic-flow, consulte `.sdd-agentic-flow/usage.md` ou execute `npx sdd-agentic-flow doctor`."""
 
 
+ASSISTANT_SYSTEM_PROMPT = """Você é o Neo, um assistente pessoal por voz gentil, claro e eficiente em português do Brasil.
+Você ajuda a pessoa no dia a dia no computador (especialmente na leitura, busca e resposta de e-mails e documentos) usando linguagem natural.
+
+ESTILO DE RESPOSTA PARA VOZ (MUITO IMPORTANTE):
+- Suas respostas serão lidas em voz alta. Nunca use emojis, asteriscos, marcações de markdown, tabelas ou listas com símbolos.
+- Use frases curtas, diretas e naturais de ouvir.
+- Para e-mails ou documentos longos, faça primeiro um resumo objetivo (remetente, assunto e ponto principal) e pergunte se a pessoa quer ouvir na íntegra ou responder.
+- Se um pedido puder se referir a mais de uma conta (por exemplo, Gmail ou Outlook), pergunte de forma simples qual conta ela prefere ou ofereça verificar ambas.
+
+REGRAS DE AÇÃO E SEGURANÇA:
+1. Quando precisar consultar e-mails ou arquivos, use as ferramentas disponíveis imediatamente antes de responder.
+2. Nunca envie ou responda um e-mail sem antes ler em voz alta o destinatário, o assunto e o texto do rascunho e receber confirmação explícita da pessoa.
+3. Nunca invente informações que não estejam nos e-mails ou documentos consultados."""
+
+
+VALID_PROFILES = ("dev", "assistant")
+
+
+def get_active_profile() -> str:
+    """Return the active Neo profile ('dev' or 'assistant'), defaulting to 'dev'."""
+    raw = os.getenv("NEO_PROFILE", "dev").strip().lower()
+    return raw if raw in VALID_PROFILES else "dev"
+
+
+def get_system_prompt(profile: str | None = None) -> str:
+    """Return the system instruction matching the requested or active profile."""
+    resolved = (profile or get_active_profile()).strip().lower()
+    if resolved == "assistant":
+        return ASSISTANT_SYSTEM_PROMPT
+    return SYSTEM_PROMPT
+
+
+def get_llm_config(api_key: str | None = None) -> dict:
+    """Centralized BYOK / provider config seam for Gemini, Grok fallback, and future gateways."""
+    return {
+        "gemini_api_key": api_key or os.getenv("GEMINI_API_KEY"),
+        "grok_api_key": os.getenv("GROK_API_KEY"),
+        "base_url": os.getenv("NEO_LLM_BASE_URL") or None,
+        "model_name": os.getenv("NEO_GEMINI_MODEL", "gemini-2.5-flash"),
+    }
+
+
 # ── Tool implementations ──────────────────────────────────────────────────────
 
 def run_command(CommandLine: str) -> str:
@@ -232,21 +276,51 @@ TOOLS = [
     list_directory,
 ]
 
+ASSISTANT_SAFE_TOOLS = [
+    view_file,
+    list_directory,
+    *EMAIL_TOOLS,
+]
+
+
+def get_tools_for_profile(profile: str | None = None) -> list:
+    """Return the allowed tool list for the given profile (INV-1: no shell/edit in assistant)."""
+    resolved = (profile or get_active_profile()).strip().lower()
+    if resolved == "assistant":
+        return list(ASSISTANT_SAFE_TOOLS)
+    tools = list(TOOLS)
+    if os.getenv("NEO_EMAIL_ENABLED", "false").lower() == "true":
+        tools.extend(EMAIL_TOOLS)
+    return tools
+
 
 # ── NeoAgent ──────────────────────────────────────────────────────────────────
 class NeoAgent:
     """Wraps the Google Generative AI SDK with tool-calling + security policies."""
 
-    def __init__(self, api_key: str | None = None):
-        effective_key = api_key or os.getenv("GEMINI_API_KEY")
+    def __init__(self, api_key: str | None = None, profile: str | None = None):
+        self.profile = (profile or get_active_profile()).strip().lower()
+        if self.profile not in VALID_PROFILES:
+            self.profile = "dev"
+
+        llm_cfg = get_llm_config(api_key=api_key)
+        effective_key = llm_cfg["gemini_api_key"]
+        model_name = llm_cfg["model_name"]
+        tools = get_tools_for_profile(self.profile)
+        self._allowed_tool_names = {fn.__name__ for fn in tools}
+        self._tool_map = {fn.__name__: fn for fn in tools}
+
         genai.configure(api_key=effective_key)
         self.model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=SYSTEM_PROMPT,
-            tools=TOOLS,
+            model_name=model_name,
+            system_instruction=get_system_prompt(self.profile),
+            tools=tools,
         )
         self.chat = self.model.start_chat(history=[])
-        print(f"[NeoAgent] Initialized (model=gemini-2.5-flash, api_key={'set' if effective_key else 'None'})")
+        print(
+            f"[NeoAgent] Initialized (profile={self.profile}, model={model_name}, "
+            f"api_key={'set' if effective_key else 'None'})"
+        )
 
     async def chat_send(self, message: str) -> str:
         """Send a message through the function-calling loop and return the final text."""
@@ -296,6 +370,9 @@ class NeoAgent:
 
     def _execute_function(self, fn_name: str, fn_args: dict) -> str:
         """Execute a tool function by name with args. Called by both sync and streaming paths."""
+        if fn_name not in self._allowed_tool_names:
+            return f"Ação não permitida no perfil '{self.profile}': '{fn_name}'."
+
         if fn_name == "run_command":
             command = fn_args.get("CommandLine", "")
             if not is_safe_command({"CommandLine": command}):
@@ -307,12 +384,8 @@ class NeoAgent:
                     return run_command(CommandLine=command)
             else:
                 return run_command(CommandLine=command)
-        elif fn_name == "view_file":
-            return view_file(**fn_args)
-        elif fn_name == "edit_file":
-            return edit_file(**fn_args)
-        elif fn_name == "list_directory":
-            return list_directory(**fn_args)
+        elif fn_name in self._tool_map:
+            return self._tool_map[fn_name](**fn_args)
         else:
             return f"Erro: ferramenta desconhecida '{fn_name}'"
 
@@ -834,6 +907,219 @@ async def reset_conversation(
             return {"status": "ok", "message": "Contexto de conversa reiniciado."}
         else:
             return {"status": "ok", "message": "Nenhum agente ativo para reiniciar."}
+
+
+# ── Local Accessible Setup Wizard (/setup — localhost only, INV-3) ────────────
+
+SETUP_ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
+SETUP_ACCOUNTS_PATH = DEFAULT_ACCOUNTS_FILE
+SETUP_UI_PATH = os.path.join(os.path.dirname(__file__), "setup_ui.html")
+
+
+def _mask_secret(value: str | None) -> str:
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return "****"
+    return f"{value[:4]}...{value[-4:]}"
+
+
+def _read_env_file(path: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not os.path.exists(path):
+        return values
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            k, v = stripped.split("=", 1)
+            values[k.strip()] = v.strip()
+    return values
+
+
+def _write_env_file(path: str, updates: dict[str, str]) -> None:
+    existing = _read_env_file(path)
+    existing.update({k: str(v) for k, v in updates.items() if v is not None})
+    if not existing.get("INTERNAL_API_KEY"):
+        import secrets
+        existing["INTERNAL_API_KEY"] = secrets.token_hex(16)
+    lines = [f"{k}={v}" for k, v in existing.items()]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+class SetupSavePayload(BaseModel):
+    gemini_api_key: str | None = None
+    profile: str = "assistant"
+    tts_voice: str = "pt-BR-FranciscaNeural"
+    followup_seconds: int = 8
+    accounts: list[dict] | None = None
+
+
+class SetupTestLLMPayload(BaseModel):
+    gemini_api_key: str | None = None
+
+
+class SetupTestEmailPayload(BaseModel):
+    account: dict
+
+
+class SetupTestVoicePayload(BaseModel):
+    voice: str = "pt-BR-FranciscaNeural"
+
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_page():
+    """Serve the high-contrast accessible Setup Wizard UI (localhost only)."""
+    with open(SETUP_UI_PATH, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read(), status_code=200)
+
+
+@app.get("/setup/status")
+async def setup_status():
+    """Return masked setup status — NEVER exposes plaintext API keys or passwords (INV-3)."""
+    env_vals = _read_env_file(SETUP_ENV_PATH)
+    gemini_key = env_vals.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
+    profile = env_vals.get("NEO_PROFILE") or get_active_profile()
+    tts_voice = env_vals.get("NEO_TTS_VOICE") or os.getenv("NEO_TTS_VOICE", "pt-BR-FranciscaNeural")
+    followup = int(env_vals.get("NEO_FOLLOWUP_SECONDS") or os.getenv("NEO_FOLLOWUP_SECONDS", "8"))
+
+    safe_accounts = []
+    if os.path.exists(SETUP_ACCOUNTS_PATH):
+        try:
+            with open(SETUP_ACCOUNTS_PATH, "r", encoding="utf-8") as f:
+                raw_accounts = json.load(f).get("accounts", [])
+            for a in raw_accounts:
+                safe_accounts.append(
+                    {
+                        "id": a.get("id", ""),
+                        "label": a.get("label", ""),
+                        "type": a.get("type", "imap"),
+                        "provider": a.get("provider", ""),
+                        "imap_host": a.get("imap_host", ""),
+                        "smtp_host": a.get("smtp_host", ""),
+                        "username": a.get("username", ""),
+                        "has_password": bool(a.get("password") or a.get("access_token")),
+                    }
+                )
+        except Exception:
+            pass
+
+    wa_connected = False
+    try:
+        token = env_vals.get("INTERNAL_API_KEY") or os.getenv("INTERNAL_API_KEY", "")
+        r = requests.get(f"{_bridge_base_url()}/status", headers={"X-Neo-Token": token}, timeout=2)
+        if r.status_code == 200:
+            wa_connected = bool(r.json().get("connected", False))
+    except Exception:
+        pass
+
+    return {
+        "gemini_configured": bool(gemini_key),
+        "gemini_key_masked": _mask_secret(gemini_key),
+        "profile": profile,
+        "tts_voice": tts_voice,
+        "followup_seconds": followup,
+        "accounts": safe_accounts,
+        "outlook_desktop_supported": os.name == "nt",
+        "whatsapp_connected": wa_connected,
+    }
+
+
+@app.post("/setup/save")
+async def setup_save(payload: SetupSavePayload):
+    """Persist BYOK settings to .env and email accounts to email_accounts.json."""
+    global INTERNAL_API_KEY
+
+    env_updates: dict[str, str] = {
+        "NEO_PROFILE": payload.profile if payload.profile in VALID_PROFILES else "assistant",
+        "NEO_VOICE_ENABLED": "true",
+        "NEO_TTS_VOICE": payload.tts_voice,
+        "NEO_FOLLOWUP_SECONDS": str(max(3, min(int(payload.followup_seconds), 30))),
+    }
+    if payload.gemini_api_key:
+        env_updates["GEMINI_API_KEY"] = payload.gemini_api_key.strip()
+
+    _write_env_file(SETUP_ENV_PATH, env_updates)
+    saved_env = _read_env_file(SETUP_ENV_PATH)
+    for k, v in saved_env.items():
+        os.environ[k] = v
+    INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
+
+    if payload.accounts is not None:
+        # Preserve existing stored password/token when UI sends account without re-entering secret
+        existing_by_id: dict[str, dict] = {}
+        if os.path.exists(SETUP_ACCOUNTS_PATH):
+            try:
+                with open(SETUP_ACCOUNTS_PATH, "r", encoding="utf-8") as f:
+                    for item in json.load(f).get("accounts", []):
+                        existing_by_id[str(item.get("id", ""))] = item
+            except Exception:
+                pass
+
+        merged_accounts = []
+        for acct in payload.accounts:
+            entry = dict(acct)
+            prev = existing_by_id.get(str(entry.get("id", "")), {})
+            if not entry.get("password") and prev.get("password"):
+                entry["password"] = prev["password"]
+            if not entry.get("access_token") and prev.get("access_token"):
+                entry["access_token"] = prev["access_token"]
+            entry.pop("has_password", None)
+            merged_accounts.append(entry)
+
+        with open(SETUP_ACCOUNTS_PATH, "w", encoding="utf-8") as f:
+            json.dump({"accounts": merged_accounts}, f, indent=2, ensure_ascii=False)
+
+    # Reset active agent so new profile/key takes effect immediately
+    async with agent_manager.lock:
+        agent_manager.agent = None
+        agent_manager.message_count = 0
+
+    return {"ok": True, "message": "Tudo salvo! O Neo Assistente já está pronto para uso."}
+
+
+@app.post("/setup/test-llm")
+async def setup_test_llm(payload: SetupTestLLMPayload):
+    """Validate a BYOK Gemini API key without exposing it."""
+    key = (payload.gemini_api_key or "").strip() or os.getenv("GEMINI_API_KEY")
+    if not key:
+        return {"ok": False, "message": "Cole a chave do Gemini antes de testar."}
+    try:
+        genai.configure(api_key=key)
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
+        resp = model.generate_content("Responda apenas: OK")
+        if resp and resp.text:
+            return {"ok": True, "message": "Conexão com o Gemini funcionando perfeitamente!"}
+        return {"ok": False, "message": "O Gemini respondeu vazio. Verifique a chave."}
+    except Exception as exc:
+        return {"ok": False, "message": f"Não foi possível conectar ao Gemini: {str(exc)[:180]}"}
+
+
+@app.post("/setup/test-email")
+async def setup_test_email(payload: SetupTestEmailPayload):
+    """Test an email account configuration before saving."""
+    try:
+        adapter = build_adapter_from_entry(payload.account)
+        ok, msg = adapter.test_connection()
+        return {"ok": ok, "message": msg}
+    except Exception as exc:
+        return {"ok": False, "message": f"Falha ao testar e-mail: {str(exc)[:180]}"}
+
+
+@app.post("/setup/test-voice")
+async def setup_test_voice(payload: SetupTestVoicePayload):
+    """Generate and return a short PT-BR voice sample so the user can hear Neo."""
+    os.environ["NEO_VOICE_ENABLED"] = "true"
+    os.environ["NEO_TTS_VOICE"] = payload.voice or "pt-BR-FranciscaNeural"
+    audio_path = tts_engine.generate_audio(
+        "Olá! Eu sou o Neo, seu assistente por voz. Tudo pronto para começarmos."
+    )
+    if not audio_path or not os.path.exists(audio_path):
+        raise HTTPException(status_code=500, detail="Não foi possível gerar o áudio de teste.")
+    media_type = "audio/mpeg" if audio_path.endswith(".mp3") else "audio/ogg"
+    return FileResponse(audio_path, media_type=media_type)
 
 
 if __name__ == "__main__":

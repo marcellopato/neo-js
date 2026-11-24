@@ -1,0 +1,6 @@
+# Optional dependencies for the hands-free Windows voice client (voice_listener.py)
+vosk>=0.3.45
+sounddevice>=0.4.6
+pygame>=2.5.2
+keyboard>=0.13.5
+pywin32>=306; sys_platform == "win32"

@@ -3,6 +3,8 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { GoogleGenAI } = require('@google/genai');
 
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -13,7 +15,7 @@ let isLocked = false; // Bot starts unlocked (self-chat, senha removida)
 let currentQR = null;
 let isConnected = false;
 
-const TEMP_DIR = '/tmp/neo-bridge-audio'; // Temp dir for audio files
+const TEMP_DIR = path.join(os.tmpdir(), 'neo-bridge-audio'); // Cross-platform temp dir for audio files
 if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 function withTimeout(promise, timeoutMs, errorMessage) {
@@ -103,7 +105,10 @@ client.on('ready', () => {
 });
 
 async function triggerNeoAutoUpdate(reason) {
-    const prompt = `[ALERTA DO SISTEMA] A bridge do WhatsApp falhou ao iniciar ou se desconectou de forma anormal. Motivo: ${reason}. Isso geralmente acontece quando o WhatsApp Web atualiza e a biblioteca fica desatualizada. Por favor, execute o comando 'npm install github:pedroslopez/whatsapp-web.js#main' para atualizar a biblioteca e, em seguida, reinicie o sistema usando './start.sh'.`;
+    const restartHint = process.platform === 'win32'
+        ? 'reinicie o processo da bridge no Windows (node bridge.js ou scripts/Instalar-Neo.bat)'
+        : "reinicie o sistema usando './start.sh'";
+    const prompt = `[ALERTA DO SISTEMA] A bridge do WhatsApp falhou ao iniciar ou se desconectou de forma anormal. Motivo: ${reason}. Isso geralmente acontece quando o WhatsApp Web atualiza e a biblioteca fica desatualizada. Por favor, execute o comando 'npm install github:pedroslopez/whatsapp-web.js#main' para atualizar a biblioteca e, em seguida, ${restartHint}.`;
     console.log(`\n[Auto-Healing] Enviando solicitação de reparo para o Neo. Motivo: ${reason}`);
     await forwardToAgent(prompt, "system");
 }

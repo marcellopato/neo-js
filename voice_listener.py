@@ -1,0 +1,338 @@
+"""Hands-free wake-word ('Ei Neo') and conversational voice client for Neo.JS."""
+
+from __future__ import annotations
+
+import base64
+import io
+import json
+import math
+import os
+import re
+import struct
+import sys
+import threading
+import time
+import unicodedata
+import wave
+from enum import Enum
+
+import requests
+from dotenv import load_dotenv
+
+import tts_engine
+
+load_dotenv()
+
+DEFAULT_WAKE_PHRASES = ("ei neo", "oi neo", "ok neo")
+DEFAULT_BACKEND_URL = os.getenv("NEO_BACKEND_URL", "http://127.0.0.1:5000")
+DEFAULT_VOSK_MODEL_DIR = os.path.join(os.path.dirname(__file__), "models", "vosk-pt")
+SAMPLE_RATE = 16000
+
+
+class VoiceState(str, Enum):
+    IDLE = "idle"
+    LISTENING = "listening"
+    PROCESSING = "processing"
+    SPEAKING = "speaking"
+    FOLLOWUP = "followup"
+
+
+def _normalize_text(text: str) -> str:
+    if not text:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", text.lower())
+    no_accents = "".join(ch for ch in nfkd if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9\s]", " ", no_accents).strip()
+
+
+def matches_wake_phrase(text: str, phrases: tuple[str, ...] = DEFAULT_WAKE_PHRASES) -> bool:
+    """Return True if recognized speech contains any configured wake phrase."""
+    norm = re.sub(r"\s+", " ", _normalize_text(text))
+    if not norm:
+        return False
+    return any(_normalize_text(p) in norm for p in phrases)
+
+
+class VoiceSessionStateMachine:
+    """Hardware-independent state machine for hands-free voice turns and follow-up windows."""
+
+    def __init__(
+        self,
+        followup_seconds: float | None = None,
+        wake_phrases: tuple[str, ...] = DEFAULT_WAKE_PHRASES,
+    ):
+        self.state = VoiceState.IDLE
+        self.wake_phrases = wake_phrases
+        self.followup_seconds = float(
+            followup_seconds
+            if followup_seconds is not None
+            else os.getenv("NEO_FOLLOWUP_SECONDS", "8")
+        )
+        self.last_reply: str = ""
+
+    def on_wake_word(self, recognized_text: str) -> str | None:
+        if self.state != VoiceState.IDLE:
+            return None
+        if matches_wake_phrase(recognized_text, self.wake_phrases):
+            self.state = VoiceState.LISTENING
+            return "start"
+        return None
+
+    def on_speech_captured(self, audio_bytes: bytes | None) -> str | None:
+        if self.state not in (VoiceState.LISTENING, VoiceState.FOLLOWUP):
+            return None
+        if not audio_bytes:
+            self.state = VoiceState.IDLE
+            return "timeout" if self.state == VoiceState.LISTENING else None
+        self.state = VoiceState.PROCESSING
+        return "processing"
+
+    def on_reply_ready(self, reply_text: str) -> None:
+        if self.state != VoiceState.PROCESSING:
+            return
+        self.last_reply = reply_text
+        self.state = VoiceState.SPEAKING
+
+    def on_speaking_finished(self) -> None:
+        if self.state == VoiceState.SPEAKING:
+            self.state = VoiceState.FOLLOWUP
+
+    def on_silence_timeout(self) -> str | None:
+        prev = self.state
+        self.state = VoiceState.IDLE
+        return "timeout" if prev == VoiceState.LISTENING else None
+
+    def on_interrupt(self) -> None:
+        self.state = VoiceState.IDLE
+
+    def on_error(self, _reason: str = "") -> str:
+        self.state = VoiceState.IDLE
+        return "error"
+
+
+def play_cue(cue_name: str | None) -> None:
+    """Play short non-verbal audio cues (beeps on Windows) for eyes-free feedback."""
+    if not cue_name:
+        return
+    tones = {
+        "start": (880, 140),       # high short beep: listening
+        "processing": (520, 110),  # mid beep: thinking
+        "timeout": (400, 120),     # soft low beep: timed out
+        "error": (280, 260),       # low longer beep: error
+    }
+    freq, duration_ms = tones.get(cue_name, (600, 100))
+    if sys.platform == "win32":
+        try:
+            import winsound
+
+            winsound.Beep(freq, duration_ms)
+        except Exception:
+            pass
+    else:
+        print(f"[VoiceCue] ({cue_name})")
+
+
+def transcribe_and_chat(
+    wav_bytes: bytes,
+    backend_url: str = DEFAULT_BACKEND_URL,
+    internal_token: str | None = None,
+) -> tuple[str, str]:
+    """Send WAV audio to Neo backend /transcribe, then query /chat in natural language."""
+    token = internal_token or os.getenv("INTERNAL_API_KEY", "")
+    headers = {"X-Neo-Token": token}
+    base = backend_url.rstrip("/")
+
+    b64_audio = base64.b64encode(wav_bytes).decode("ascii")
+    res_t = requests.post(
+        f"{base}/transcribe",
+        json={"data": b64_audio, "mimeType": "audio/wav"},
+        headers=headers,
+        timeout=60,
+    )
+    res_t.raise_for_status()
+    transcript = (res_t.json().get("transcription") or "").strip()
+    if not transcript:
+        return "", ""
+
+    res_c = requests.post(
+        f"{base}/chat",
+        json={"message": transcript},
+        headers=headers,
+        timeout=120,
+    )
+    res_c.raise_for_status()
+    reply = (res_c.json().get("response") or "").strip()
+    return transcript, reply
+
+
+def _pcm_rms(chunk: bytes) -> float:
+    if not chunk:
+        return 0.0
+    count = len(chunk) // 2
+    if count == 0:
+        return 0.0
+    samples = struct.unpack(f"<{count}h", chunk[: count * 2])
+    mean_sq = sum(s * s for s in samples) / count
+    return math.sqrt(mean_sq)
+
+
+def _pcm_to_wav_bytes(pcm_chunks: list[bytes], sample_rate: int = SAMPLE_RATE) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(b"".join(pcm_chunks))
+    return buf.getvalue()
+
+
+def record_until_silence(
+    max_wait_seconds: float = 8.0,
+    silence_seconds: float = 1.6,
+    max_record_seconds: float = 20.0,
+    rms_threshold: float = 450.0,
+) -> bytes | None:
+    """Record 16kHz mono PCM from default microphone until speech ends with silence."""
+    import sounddevice as sd
+
+    block_duration = 0.2
+    block_size = int(SAMPLE_RATE * block_duration)
+    chunks: list[bytes] = []
+    speech_started = False
+    start_time = time.monotonic()
+    last_voice_time = start_time
+
+    with sd.RawInputStream(
+        samplerate=SAMPLE_RATE, blocksize=block_size, dtype="int16", channels=1
+    ) as stream:
+        while True:
+            data, _ = stream.read(block_size)
+            raw = bytes(data)
+            now = time.monotonic()
+            rms = _pcm_rms(raw)
+
+            if rms >= rms_threshold:
+                speech_started = True
+                last_voice_time = now
+
+            if speech_started:
+                chunks.append(raw)
+                if (now - last_voice_time) >= silence_seconds:
+                    break
+                if (now - start_time) >= max_record_seconds:
+                    break
+            else:
+                if (now - start_time) >= max_wait_seconds:
+                    return None
+
+    return _pcm_to_wav_bytes(chunks) if chunks else None
+
+
+def play_audio_interruptible(filepath: str, stop_event: threading.Event) -> bool:
+    """Play MP3/OGG audio via pygame.mixer, stopping immediately if stop_event is set.
+
+    Returns True if interrupted, False if playback completed naturally.
+    """
+    import pygame
+
+    if not pygame.mixer.get_init():
+        pygame.mixer.init()
+    pygame.mixer.music.load(filepath)
+    pygame.mixer.music.play()
+
+    while pygame.mixer.music.get_busy():
+        if stop_event.is_set():
+            pygame.mixer.music.stop()
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def run_voice_loop(
+    model_dir: str = DEFAULT_VOSK_MODEL_DIR,
+    backend_url: str = DEFAULT_BACKEND_URL,
+) -> None:
+    """Main hands-free loop: Vosk wake word -> Gemini STT/Chat -> Edge TTS -> Follow-up."""
+    import sounddevice as sd
+    from vosk import KaldiRecognizer, Model
+
+    if not os.path.isdir(model_dir):
+        raise FileNotFoundError(
+            f"Modelo Vosk não encontrado em '{model_dir}'. "
+            "Execute scripts/Instalar-Neo.bat para baixar automaticamente."
+        )
+
+    sm = VoiceSessionStateMachine()
+    stop_event = threading.Event()
+
+    # Optional global Esc hotkey to interrupt speech immediately
+    try:
+        import keyboard
+
+        keyboard.add_hotkey("esc", lambda: (stop_event.set(), sm.on_interrupt()))
+        print("[Voice] Atalho global Esc ativo para interromper a fala.")
+    except Exception as exc:
+        print(f"[Voice] Aviso: atalho global Esc indisponível ({exc}).")
+
+    print(f"[Voice] Carregando modelo offline Vosk de {model_dir}...")
+    model = Model(model_dir)
+    recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+
+    print("[Voice] Neo ouvindo em modo standby. Diga 'Ei Neo' para começar.")
+
+    while True:
+        # 1. Wait for wake word while IDLE
+        if sm.state == VoiceState.IDLE:
+            with sd.RawInputStream(
+                samplerate=SAMPLE_RATE, blocksize=4000, dtype="int16", channels=1
+            ) as stream:
+                while sm.state == VoiceState.IDLE:
+                    data, _ = stream.read(4000)
+                    if recognizer.AcceptWaveform(bytes(data)):
+                        text = json.loads(recognizer.Result()).get("text", "")
+                    else:
+                        text = json.loads(recognizer.PartialResult()).get("partial", "")
+
+                    cue = sm.on_wake_word(text)
+                    if cue:
+                        recognizer.Reset()
+                        play_cue(cue)
+                        break
+
+        # 2. Capture user utterance (initial or follow-up)
+        if sm.state in (VoiceState.LISTENING, VoiceState.FOLLOWUP):
+            wait_sec = sm.followup_seconds if sm.state == VoiceState.FOLLOWUP else 8.0
+            wav_bytes = record_until_silence(max_wait_seconds=wait_sec)
+            if not wav_bytes:
+                play_cue(sm.on_silence_timeout())
+                continue
+            play_cue(sm.on_speech_captured(wav_bytes))
+
+            # 3. Transcribe + Chat via Neo backend
+            try:
+                transcript, reply = transcribe_and_chat(wav_bytes, backend_url=backend_url)
+                if not transcript or not reply:
+                    play_cue(sm.on_error("empty"))
+                    continue
+                print(f"[Voice] Você: {transcript}")
+                print(f"[Voice] Neo: {reply}")
+                sm.on_reply_ready(reply)
+
+                # 4. Speak response aloud with Esc interrupt support
+                audio_path = tts_engine.generate_audio(reply)
+                if audio_path and os.path.exists(audio_path):
+                    stop_event.clear()
+                    interrupted = play_audio_interruptible(audio_path, stop_event)
+                    if interrupted:
+                        sm.on_interrupt()
+                    else:
+                        sm.on_speaking_finished()
+                else:
+                    sm.on_speaking_finished()
+            except Exception as exc:
+                print(f"[Voice] Erro no ciclo de voz: {exc}")
+                play_cue(sm.on_error(str(exc)))
+
+
+if __name__ == "__main__":
+    run_voice_loop()

@@ -439,6 +439,20 @@ The `INTERNAL_API_KEY` from `.env` is used for authentication.
 
 ---
 
+## ♿ Voice Accessibility Assistant (Windows · BYOK)
+
+Neo.JS includes a dedicated **voice-first accessibility profile** (`NEO_PROFILE=assistant`), designed for low-vision users on Windows and kept **100% free via BYOK** (Bring Your Own Key):
+
+- **🎙️ Hands-free `"Ei Neo"` wake word (`voice_listener.py`):** Offline local wake-word detection (`Vosk`) with audio cues, natural-language understanding, automatic conversational follow-up window (`NEO_FOLLOWUP_SECONDS`), and instant `Esc` speech interrupt.
+- **🗣️ Neural PT-BR Voice (`tts_engine.py`):** Natural Microsoft neural speech synthesis via `edge-tts` (`pt-BR-FranciscaNeural`) with automatic `gTTS` fallback, working both locally on Windows and over **WhatsApp voice messages (PTT)**.
+- **📧 Multi-Account Email by Voice (`email_tools.py` — Gmail + Outlook):** Read, search, summarize, and reply to emails in natural language across Gmail (IMAP/SMTP App Password) and Outlook (Windows Classic Desktop COM or Microsoft Graph), with mandatory voice confirmation before sending (`confirmed=True`).
+- **🔒 Safe & BYOK-First:** Disables shell execution (`run_command`) and file editing (`edit_file`) in `assistant` mode and runs with your own `GEMINI_API_KEY` (with a clean `NEO_LLM_BASE_URL` seam for future managed plans).
+- **🪄 One-Click Windows Setup (No Terminal):** Double-click [`scripts/Instalar-Neo.bat`](scripts/Instalar-Neo.bat) to bootstrap Python via `winget`, install dependencies, download the offline `Vosk` `pt-BR` model, register silent Windows startup (`scripts/start-assistant-silent.vbs` via `pythonw.exe`), and open the high-contrast visual Setup Wizard at `http://127.0.0.1:5000/setup`.
+
+> 📐 **SDD Specification:** Full specification, design decisions, and task breakdown live in [`.specs/features/voice-accessibility-assistant/`](.specs/features/voice-accessibility-assistant/spec.md).
+
+---
+
 ## 📐 Spec-Driven Development (SDD) Harness
 
 Neo.JS integrates natively with [**sdd-agentic-flow**](https://github.com/gmartins-dev/sdd-agentic-flow) by [**Guilherme Martins**](https://github.com/gmartins-dev) to enforce structured software engineering practices.

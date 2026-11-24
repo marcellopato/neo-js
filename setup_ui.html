@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neo Assistente — Configuração Fácil</title>
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --card: #141b28;
+      --border: #2a3750;
+      --text: #f8fafc;
+      --muted: #cbd5e1;
+      --accent: #38bdf8;
+      --success: #22c55e;
+      --danger: #f87171;
+      --warning: #facc15;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 20px;
+      line-height: 1.5;
+      padding: 24px;
+    }
+    main {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 2rem; margin: 0 0 8px; color: var(--accent); }
+    h2 { font-size: 1.4rem; margin: 0 0 12px; color: #ffffff; }
+    p { margin: 0 0 14px; color: var(--muted); }
+    .card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin: 14px 0 6px;
+      color: #ffffff;
+    }
+    input, select {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 20px;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: #090d14;
+      color: #ffffff;
+    }
+    input:focus, select:focus, button:focus {
+      outline: 3px solid var(--warning);
+      outline-offset: 2px;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    button, a.btn {
+      display: inline-block;
+      padding: 14px 22px;
+      font-size: 19px;
+      font-weight: 700;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      background: var(--accent);
+      color: #06101b;
+    }
+    button.secondary, a.btn.secondary {
+      background: #24324a;
+      color: #ffffff;
+      border: 2px solid var(--border);
+    }
+    button.primary {
+      background: var(--success);
+      color: #052e16;
+      width: 100%;
+      font-size: 22px;
+      padding: 18px;
+    }
+    .status {
+      margin-top: 12px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-weight: 600;
+      display: none;
+    }
+    .status.ok { display: block; background: #052e16; color: #86efac; border: 2px solid var(--success); }
+    .status.err { display: block; background: #3b0a0a; color: #fecaca; border: 2px solid var(--danger); }
+    .account-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 14px;
+      background: #090d14;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+    .hint { font-size: 17px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <header style="margin-bottom: 24px;">
+      <h1>Neo Assistente por Voz</h1>
+      <p>Configuração rápida em alto contraste. Depois de salvar, basta dizer <strong>"Ei Neo"</strong>.</p>
+    </header>
+
+    <!-- PASSO 1: GEMINI BYOK -->
+    <section class="card" aria-labelledby="step1-title">
+      <h2 id="step1-title">1. Chave gratuita do Gemini (BYOK)</h2>
+      <p>O Neo é gratuito e usa a sua própria chave do Google Gemini.</p>
+      <div class="row" style="margin-bottom: 12px;">
+        <a class="btn secondary" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
+          Abrir Google AI Studio para criar chave
+        </a>
+      </div>
+      <label for="geminiKey">Cole aqui sua chave do Gemini (começa com AIza...)</label>
+      <input id="geminiKey" type="password" placeholder="AIzaSy..." autocomplete="off" />
+      <p id="geminiHint" class="hint"></p>
+      <div class="row">
+        <button type="button" class="secondary" onclick="testLLM()">Testar conexão</button>
+      </div>
+      <div id="llmStatus" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <!-- PASSO 2: E-MAILS (GMAIL E OUTLOOK) -->
+    <section class="card" aria-labelledby="step2-title">
+      <h2 id="step2-title">2. Conectar E-mails (Gmail e Outlook)</h2>
+      <p>Adicione as contas que o Neo vai ler e responder quando você pedir por voz.</p>
+
+      <div id="accountsList"></div>
+
+      <div class="row" style="margin-top: 16px;">
+        <button type="button" class="secondary" onclick="addOutlookDesktop()">
+          + Usar Outlook do Windows automaticamente
+        </button>
+      </div>
+
+      <hr style="border-color: var(--border); margin: 20px 0;" />
+
+      <label for="emailProvider">Adicionar conta (Gmail ou outro IMAP)</label>
+      <select id="emailProvider" onchange="onProviderChange()">
+        <option value="gmail">Gmail (usando Senha de App do Google)</option>
+        <option value="imap">Outro servidor de e-mail (IMAP/SMTP)</option>
+      </select>
+
+      <label for="emailLabel">Nome da conta (como você vai chamar por voz)</label>
+      <input id="emailLabel" type="text" placeholder="Ex: Gmail Pessoal ou Corretora" value="Gmail" />
+
+      <label for="emailUser">Endereço de e-mail</label>
+      <input id="emailUser" type="email" placeholder="seuemail@gmail.com" />
+
+      <label for="emailPass">Senha de App (16 letras, sem espaços)</label>
+      <input id="emailPass" type="password" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off" />
+      <p class="hint">
+        No Gmail, gere uma Senha de App em
+        <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color: var(--accent);">
+          myaccount.google.com/apppasswords
+        </a>.
+      </p>
+
+      <div id="customImapFields" style="display:none;">
+        <label for="imapHost">Servidor IMAP</label>
+        <input id="imapHost" type="text" placeholder="imap.seudominio.com.br" />
+        <label for="smtpHost">Servidor SMTP</label>
+        <input id="smtpHost" type="text" placeholder="smtp.seudominio.com.br" />
+      </div>
+
+      <div class="row">
+        <button type="button" class="secondary" onclick="testEmail()">Testar e-mail</button>
+        <button type="button" onclick="addImapAccount()">+ Adicionar esta conta</button>
+      </div>
+      <div id="emailStatus" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <!-- PASSO 3: VOZ -->
+    <section class="card" aria-labelledby="step3-title">
+      <h2 id="step3-title">3. Voz do Neo</h2>
+      <label for="ttsVoice">Escolha a voz</label>
+      <select id="ttsVoice">
+        <option value="pt-BR-FranciscaNeural">Francisca (Feminina, natural)</option>
+        <option value="pt-BR-AntonioNeural">Antonio (Masculina, natural)</option>
+      </select>
+
+      <label for="followupSec">Tempo que o microfone fica aberto após o Neo perguntar (segundos)</label>
+      <input id="followupSec" type="number" min="3" max="20" value="8" />
+
+      <div class="row">
+        <button type="button" class="secondary" onclick="testVoice()">Ouvir a voz do Neo</button>
+      </div>
+      <audio id="voicePlayer" style="display:none;"></audio>
+      <div id="voiceStatus" class="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <!-- PASSO 4: WHATSAPP OPCIONAL -->
+    <section class="card" aria-labelledby="step4-title">
+      <h2 id="step4-title">4. WhatsApp por Voz (Opcional)</h2>
+      <p id="waText">Você também pode mandar áudios para o Neo pelo WhatsApp. Se não quiser agora, basta salvar abaixo.</p>
+    </section>
+
+    <!-- SALVAR -->
+    <section class="card">
+      <button type="button" class="primary" onclick="saveAll()">Salvar e Ativar Neo Assistente</button>
+      <div id="saveStatus" class="status" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script>
+    let configuredAccounts = [];
+
+    function showStatus(id, ok, msg) {
+      const el = document.getElementById(id);
+      el.className = "status " + (ok ? "ok" : "err");
+      el.textContent = msg;
+    }
+
+    function renderAccounts() {
+      const container = document.getElementById("accountsList");
+      if (!configuredAccounts.length) {
+        container.innerHTML = '<p class="hint">Nenhuma conta adicionada ainda.</p>';
+        return;
+      }
+      container.innerHTML = configuredAccounts.map((a, idx) => `
+        <div class="account-item">
+          <div><strong>${a.label}</strong> <span class="hint">(${a.type === "outlook_com" ? "Outlook Windows" : (a.username || a.type)})</span></div>
+          <button type="button" class="secondary" style="padding:8px 14px; font-size:16px;" onclick="removeAccount(${idx})">Remover</button>
+        </div>
+      `).join("");
+    }
+
+    function removeAccount(idx) {
+      configuredAccounts.splice(idx, 1);
+      renderAccounts();
+    }
+
+    function onProviderChange() {
+      const p = document.getElementById("emailProvider").value;
+      document.getElementById("customImapFields").style.display = p === "imap" ? "block" : "none";
+      if (p === "gmail") document.getElementById("emailLabel").value = "Gmail";
+    }
+
+    function addOutlookDesktop() {
+      if (configuredAccounts.some(a => a.type === "outlook_com")) {
+        showStatus("emailStatus", true, "Outlook do Windows já está na lista.");
+        return;
+      }
+      configuredAccounts.push({ id: "outlook", label: "Outlook", type: "outlook_com" });
+      renderAccounts();
+      showStatus("emailStatus", true, "Outlook do Windows adicionado! Clique em Salvar no final da página.");
+    }
+
+    function buildImapDraft() {
+      const provider = document.getElementById("emailProvider").value;
+      const label = (document.getElementById("emailLabel").value || "Gmail").trim();
+      const username = document.getElementById("emailUser").value.trim();
+      const password = document.getElementById("emailPass").value.replace(/\s+/g, "");
+      const imap_host = provider === "gmail" ? "imap.gmail.com" : document.getElementById("imapHost").value.trim();
+      const smtp_host = provider === "gmail" ? "smtp.gmail.com" : document.getElementById("smtpHost").value.trim();
+      return {
+        id: label.toLowerCase().replace(/[^a-z0-9]+/g, "_") || "email",
+        label,
+        type: "imap",
+        provider,
+        imap_host,
+        smtp_host,
+        username,
+        password
+      };
+    }
+
+    function addImapAccount() {
+      const draft = buildImapDraft();
+      if (!draft.username || !draft.password) {
+        showStatus("emailStatus", false, "Preencha o e-mail e a Senha de App.");
+        return;
+      }
+      configuredAccounts.push(draft);
+      document.getElementById("emailPass").value = "";
+      renderAccounts();
+      showStatus("emailStatus", true, `Conta "${draft.label}" adicionada! Clique em Salvar no final.`);
+    }
+
+    async function testLLM() {
+      const key = document.getElementById("geminiKey").value.trim();
+      showStatus("llmStatus", true, "Testando conexão com o Gemini...");
+      try {
+        const res = await fetch("/setup/test-llm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gemini_api_key: key || null })
+        });
+        const data = await res.json();
+        showStatus("llmStatus", !!data.ok, data.message || "Concluído.");
+      } catch (e) {
+        showStatus("llmStatus", false, "Erro ao testar conexão: " + e.message);
+      }
+    }
+
+    async function testEmail() {
+      const draft = buildImapDraft();
+      showStatus("emailStatus", true, "Testando acesso ao e-mail...");
+      try {
+        const res = await fetch("/setup/test-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account: draft })
+        });
+        const data = await res.json();
+        showStatus("emailStatus", !!data.ok, data.message || "Concluído.");
+      } catch (e) {
+        showStatus("emailStatus", false, "Erro ao testar e-mail: " + e.message);
+      }
+    }
+
+    async function testVoice() {
+      const voice = document.getElementById("ttsVoice").value;
+      showStatus("voiceStatus", true, "Gerando amostra de voz...");
+      try {
+        const res = await fetch("/setup/test-voice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ voice })
+        });
+        if (!res.ok) throw new Error("Falha ao gerar voz.");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const player = document.getElementById("voicePlayer");
+        player.src = url;
+        await player.play();
+        showStatus("voiceStatus", true, "Reproduzindo a voz do Neo!");
+      } catch (e) {
+        showStatus("voiceStatus", false, "Não foi possível reproduzir o áudio: " + e.message);
+      }
+    }
+
+    async function saveAll() {
+      const payload = {
+        gemini_api_key: document.getElementById("geminiKey").value.trim() || null,
+        profile: "assistant",
+        tts_voice: document.getElementById("ttsVoice").value,
+        followup_seconds: Number(document.getElementById("followupSec").value) || 8,
+        accounts: configuredAccounts
+      };
+      try {
+        const res = await fetch("/setup/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        showStatus("saveStatus", !!data.ok, data.message || "Configurações salvas!");
+      } catch (e) {
+        showStatus("saveStatus", false, "Erro ao salvar: " + e.message);
+      }
+    }
+
+    async function loadStatus() {
+      try {
+        const res = await fetch("/setup/status");
+        const s = await res.json();
+        if (s.gemini_configured) {
+          document.getElementById("geminiHint").textContent =
+            "Chave já configurada (" + s.gemini_key_masked + "). Deixe em branco para manter.";
+        }
+        if (s.tts_voice) document.getElementById("ttsVoice").value = s.tts_voice;
+        if (s.followup_seconds) document.getElementById("followupSec").value = s.followup_seconds;
+        configuredAccounts = (s.accounts || []).map(a => ({ ...a }));
+        renderAccounts();
+        if (s.whatsapp_connected) {
+          document.getElementById("waText").textContent = "WhatsApp já está conectado e pronto para receber áudios.";
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadStatus();
+  </script>
+</body>
+</html>
