@@ -93,7 +93,7 @@ def main() -> None:
 
     # Single-instance check: if backend is already running on :5000, just open Setup UI and exit.
     if _is_port_open(5000):
-        print("[NeoApp] Neo já está rodando em segundo plano. Abrindo tela de configuração...")
+        print("[JarvisApp] Jarvis já está rodando em segundo plano. Abrindo tela de configuração...")
         open_setup_window()
         return
 

@@ -9,6 +9,12 @@ class TestVoiceListener(unittest.TestCase):
         self.assertTrue(vl.matches_wake_phrase("jarvis"))
         self.assertTrue(vl.matches_wake_phrase("ei jarvis"))
         self.assertTrue(vl.matches_wake_phrase("oi jarbas"))
+        self.assertTrue(vl.matches_wake_phrase("de aves"))
+        self.assertTrue(vl.matches_wake_phrase("de árabes leia meus emails"))
+        self.assertEqual(
+            vl.extract_command_after_wake("de árabes leia meus emails"),
+            "leia meus emails",
+        )
         self.assertEqual(
             vl.extract_command_after_wake("jarvis leia meus emails"),
             "leia meus emails",

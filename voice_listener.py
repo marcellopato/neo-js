@@ -81,7 +81,7 @@ DEFAULT_WAKE_PHRASES = (
 
 _WAKE_REGEX = re.compile(
     r"\b(?:"
-    r"(?:(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e|em|en|hem|hein|um)\s+)?(?:jarvis|jarves|jarbas)"
+    r"(?:(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e|em|en|hem|hein|um)\s+)?(?:jarvis|jarves|jarbas|de\s+aves|de\s+arabes|d\s+aves)"
     r"|"
     r"(?:ei|hey|oi|ou|ok|okey|o\s+que|oque|ola|ai|e|em|en|hem|hein|um)\s+(?:chaves|charles|neo|niu|nil|new|nio|nel|neu|meu|mil|ninho)"
     r")\b"
@@ -365,19 +365,57 @@ def play_audio_interruptible(filepath: str, stop_event: threading.Event) -> bool
     return False
 
 
+def recognize_speech_ptbr(pcm_bytes: bytes, vosk_recognizer=None) -> str:
+    """Recognize PT-BR speech from raw 16kHz 16-bit mono PCM bytes.
+
+    Uses Google Web Speech API (via SpeechRecognition, free, no API key, high accuracy for 'Jarvis')
+    as primary engine, with offline Vosk as automatic fallback.
+    """
+    if not pcm_bytes:
+        return ""
+
+    # 1. Primary: SpeechRecognition Google pt-BR (understands 'Jarvis' natively)
+    try:
+        import speech_recognition as sr
+
+        rec = sr.Recognizer()
+        audio_data = sr.AudioData(pcm_bytes, SAMPLE_RATE, 2)
+        text = rec.recognize_google(audio_data, language="pt-BR")
+        if text and text.strip():
+            return text.strip()
+    except Exception:
+        pass
+
+    # 2. Fallback: local offline Vosk
+    if vosk_recognizer is not None:
+        try:
+            vosk_recognizer.Reset()
+            vosk_recognizer.AcceptWaveform(pcm_bytes)
+            res = json.loads(vosk_recognizer.FinalResult()).get("text", "")
+            return (res or "").strip()
+        except Exception:
+            pass
+    return ""
+
+
 def run_voice_loop(
     model_dir: str = DEFAULT_VOSK_MODEL_DIR,
     backend_url: str = DEFAULT_BACKEND_URL,
 ) -> None:
-    """Main hands-free loop: Vosk wake word -> Gemini STT/Chat -> Edge TTS -> Follow-up."""
+    """Main hands-free loop: Local VAD -> Google PT-BR / Vosk STT -> Gemini Chat -> Edge TTS -> Follow-up."""
     import sounddevice as sd
-    from vosk import KaldiRecognizer, Model
+    from collections import deque
 
-    if not os.path.isdir(model_dir):
-        raise FileNotFoundError(
-            f"Modelo Vosk não encontrado em '{model_dir}'. "
-            "Execute scripts/Instalar-Neo.bat para baixar automaticamente."
-        )
+    vosk_recognizer = None
+    if os.path.isdir(model_dir):
+        try:
+            from vosk import KaldiRecognizer, Model
+
+            print(f"[Voice] Carregando fallback offline Vosk de {model_dir}...")
+            model = Model(model_dir)
+            vosk_recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+        except Exception as exc:
+            print(f"[Voice] Aviso Vosk fallback: {exc}")
 
     sm = VoiceSessionStateMachine()
     stop_event = threading.Event()
@@ -391,141 +429,165 @@ def run_voice_loop(
     except Exception as exc:
         print(f"[Voice] Aviso: atalho global Esc indisponível ({exc}).")
 
-    print(f"[Voice] Carregando modelo offline Vosk de {model_dir}...")
-    model = Model(model_dir)
-    recognizer = KaldiRecognizer(model, SAMPLE_RATE)
-
     print("[Voice] Jarvis ouvindo em modo standby. Diga 'Jarvis' ou 'Ei Jarvis' para começar.")
-    last_partial = ""
 
-    while True:
-        # 1. Wait for wake word while IDLE (keep a 1-second pre-buffer of PCM so speech in one breath isn't lost)
-        if sm.state == VoiceState.IDLE:
-            from collections import deque
+    block_size = 3200  # 0.2s at 16kHz
+    rms_threshold = 170.0
 
-            pre_buffer: deque[bytes] = deque(maxlen=4)
-            captured_chunks: list[bytes] = []
-            vosk_heard_command = ""
+    with sd.RawInputStream(
+        samplerate=SAMPLE_RATE, blocksize=block_size, dtype="int16", channels=1
+    ) as stream:
+        while True:
+            # ── 1. Standby (IDLE): wait for local voice activity, then transcribe utterance ──
+            if sm.state == VoiceState.IDLE:
+                pre_buffer: deque[bytes] = deque(maxlen=4)  # 0.8s pre-roll so 'Jar...' is never clipped
+                utterance: list[bytes] = []
+                speech_started = False
+                start_t = 0.0
+                last_voice_t = 0.0
 
-            with sd.RawInputStream(
-                samplerate=SAMPLE_RATE, blocksize=4000, dtype="int16", channels=1
-            ) as stream:
                 while sm.state == VoiceState.IDLE:
-                    data, _ = stream.read(4000)
-                    raw_bytes = bytes(data)
-                    pre_buffer.append(raw_bytes)
-                    if recognizer.AcceptWaveform(raw_bytes):
-                        text = json.loads(recognizer.Result()).get("text", "")
+                    data, _ = stream.read(block_size)
+                    raw = bytes(data)
+                    rms = _pcm_rms(raw)
+                    now = time.monotonic()
+
+                    if not speech_started:
+                        pre_buffer.append(raw)
+                        if rms >= rms_threshold:
+                            speech_started = True
+                            start_t = now
+                            last_voice_t = now
+                            utterance.extend(pre_buffer)
                     else:
-                        text = json.loads(recognizer.PartialResult()).get("partial", "")
+                        utterance.append(raw)
+                        if rms >= rms_threshold:
+                            last_voice_t = now
+                        # End of utterance: 1.2s of silence or 14s max duration
+                        if (now - last_voice_t) >= 1.2 or (now - start_t) >= 14.0:
+                            pcm_data = b"".join(utterance)
+                            utterance.clear()
+                            speech_started = False
 
-                    if text and text != last_partial:
-                        last_partial = text
-                        print(f"[Voice/Vosk] Ouvido: '{text}'")
+                            heard = recognize_speech_ptbr(pcm_data, vosk_recognizer)
+                            if not heard:
+                                continue
+                            print(f"[Voice] Ouvido: '{heard}'")
 
-                    cue = sm.on_wake_word(text)
-                    if cue:
-                        print(f"[Voice] Gatilho reconhecido ('{text}')! Captando comando sem fechar microfone...")
-                        play_cue_async(cue)
-                        captured_chunks.extend(pre_buffer)
-
-                        # Continue reading on the SAME open stream until 1.6s of silence after speech
-                        start_t = time.monotonic()
-                        last_voice_t = start_t
-                        speech_active = bool(extract_command_after_wake(text))
-                        while True:
-                            d2, _ = stream.read(4000)
-                            b2 = bytes(d2)
-                            captured_chunks.append(b2)
-                            now_t = time.monotonic()
-                            if recognizer.AcceptWaveform(b2):
-                                t2 = json.loads(recognizer.Result()).get("text", "")
-                            else:
-                                t2 = json.loads(recognizer.PartialResult()).get("partial", "")
-                            if t2 and t2 != last_partial:
-                                last_partial = t2
-                                print(f"[Voice/Vosk] Captando: '{t2}'")
-                            if _pcm_rms(b2) >= 160.0:
-                                speech_active = True
-                                last_voice_t = now_t
-                            if speech_active and (now_t - last_voice_t) >= 1.6:
-                                break
-                            if not speech_active and (now_t - start_t) >= 7.0:
-                                break
-                            if (now_t - start_t) >= 18.0:
+                            cue = sm.on_wake_word(heard)
+                            if cue:
+                                inline_cmd = extract_command_after_wake(heard)
+                                if inline_cmd:
+                                    print(f"[Voice] Gatilho + comando reconhecido: '{inline_cmd}'")
+                                    play_cue_async(sm.on_speech_captured(pcm_data))
+                                    _handle_command_and_speak(inline_cmd, backend_url, sm, stop_event)
+                                else:
+                                    print("[Voice] Gatilho 'Jarvis' reconhecido! Ouvindo seu pedido...")
+                                    play_cue_async(cue)
                                 break
 
-                        final_vosk = json.loads(recognizer.FinalResult()).get("text", "") or last_partial
-                        recognizer.Reset()
-                        last_partial = ""
-                        vosk_heard_command = extract_command_after_wake(final_vosk) or final_vosk
-                        break
+            # ── 2. Active Listening (after saying just 'Jarvis' or during 8s FOLLOWUP window) ──
+            if sm.state in (VoiceState.LISTENING, VoiceState.FOLLOWUP):
+                wait_sec = sm.followup_seconds if sm.state == VoiceState.FOLLOWUP else 8.0
+                print(f"[Voice] Aguardando sua fala por até {wait_sec}s...")
 
-        # 2. Capture user utterance (initial from open stream or follow-up)
-        if sm.state in (VoiceState.LISTENING, VoiceState.FOLLOWUP):
-            if sm.state == VoiceState.FOLLOWUP:
-                print(f"[Voice] Janela de resposta aberta por {sm.followup_seconds}s...")
-                wav_bytes = record_until_silence(max_wait_seconds=sm.followup_seconds)
-                vosk_heard_command = ""
-            else:
-                wav_bytes = _pcm_to_wav_bytes(captured_chunks) if captured_chunks else None
+                pre_buf: deque[bytes] = deque(maxlen=3)
+                utt: list[bytes] = []
+                started = False
+                t0 = time.monotonic()
+                last_v = t0
 
-            if not wav_bytes and not vosk_heard_command:
-                print("[Voice] Silêncio detectado, voltando ao modo standby.")
-                play_cue_async(sm.on_silence_timeout())
-                continue
-            play_cue_async(sm.on_speech_captured(wav_bytes or b"inline"))
+                while True:
+                    data, _ = stream.read(block_size)
+                    raw = bytes(data)
+                    rms = _pcm_rms(raw)
+                    now = time.monotonic()
 
-            # 3. Transcribe + Chat via Neo backend
-            try:
-                transcript = ""
-                reply = ""
-                if wav_bytes:
-                    print("[Voice] Enviando áudio captado para o Gemini transcrever e responder...")
+                    if not started:
+                        pre_buf.append(raw)
+                        if rms >= rms_threshold:
+                            started = True
+                            last_v = now
+                            utt.extend(pre_buf)
+                        elif (now - t0) >= wait_sec:
+                            break
+                    else:
+                        utt.append(raw)
+                        if rms >= rms_threshold:
+                            last_v = now
+                        if (now - last_v) >= 1.4 or (now - t0) >= 20.0:
+                            break
+
+                if not utt:
+                    print("[Voice] Silêncio detectado, voltando ao modo standby.")
+                    play_cue_async(sm.on_silence_timeout())
+                    continue
+
+                pcm_captured = b"".join(utt)
+                play_cue_async(sm.on_speech_captured(pcm_captured))
+
+                transcript = recognize_speech_ptbr(pcm_captured, vosk_recognizer)
+                if not transcript:
                     try:
+                        wav_bytes = _pcm_to_wav_bytes([pcm_captured])
                         transcript, reply = transcribe_and_chat(wav_bytes, backend_url=backend_url)
-                        cleaned_tr = extract_command_after_wake(transcript)
-                        if cleaned_tr:
-                            transcript = cleaned_tr
-                    except Exception as tr_err:
-                        print(f"[Voice] Aviso na transcrição de áudio ({tr_err}), usando transcrição local Vosk...")
-
-                if (not transcript or not reply) and vosk_heard_command:
-                    cmd_txt = extract_command_after_wake(vosk_heard_command) or vosk_heard_command
-                    if not matches_wake_phrase(cmd_txt) or len(cmd_txt.split()) > 2:
-                        transcript = cmd_txt
-                        print(f"[Voice] Consultando Gemini com texto captado: '{transcript}'")
-                        reply = chat_with_text(transcript, backend_url=backend_url)
-
-                if not transcript or not reply:
-                    print("[Voice] Pedido vazio após o gatilho. Voltando ao standby.")
+                        if transcript and reply:
+                            _speak_reply(transcript, reply, sm, stop_event)
+                            continue
+                    except Exception as exc:
+                        print(f"[Voice] Erro no fallback de transcrição: {exc}")
                     play_cue_async(sm.on_error("empty"))
                     continue
-                print(f"[Voice] Você: {transcript}")
-                print(f"[Voice] Neo: {reply}")
-                sm.on_reply_ready(reply)
 
-                # 4. Speak response aloud with Esc interrupt support
-                audio_path = tts_engine.generate_audio(reply)
-                if audio_path and os.path.exists(audio_path):
-                    print(f"[Voice] Reproduzindo resposta em voz alta ({audio_path})...")
-                    stop_event.clear()
-                    interrupted = play_audio_interruptible(audio_path, stop_event)
-                    if interrupted:
-                        print("[Voice] Fala interrompida via Esc.")
-                        sm.on_interrupt()
-                    else:
-                        print("[Voice] Fala concluída. Microfone reaberto para resposta contínua...")
-                        sm.on_speaking_finished()
-                else:
-                    sm.on_speaking_finished()
-            except Exception as exc:
-                print(f"[Voice] Erro no ciclo de voz: {exc}")
-                play_cue_async(sm.on_error(str(exc)))
+                cleaned = extract_command_after_wake(transcript)
+                if cleaned:
+                    transcript = cleaned
+                _handle_command_and_speak(transcript, backend_url, sm, stop_event)
+
+
+def _handle_command_and_speak(
+    transcript: str,
+    backend_url: str,
+    sm: VoiceSessionStateMachine,
+    stop_event: threading.Event,
+) -> None:
+    try:
+        print(f"[Voice] Você: {transcript}")
+        reply = chat_with_text(transcript, backend_url=backend_url)
+        if not reply:
+            play_cue_async(sm.on_error("empty"))
+            return
+        _speak_reply(transcript, reply, sm, stop_event)
+    except Exception as exc:
+        print(f"[Voice] Erro ao consultar o Jarvis: {exc}")
+        play_cue_async(sm.on_error(str(exc)))
+
+
+def _speak_reply(
+    _transcript: str,
+    reply: str,
+    sm: VoiceSessionStateMachine,
+    stop_event: threading.Event,
+) -> None:
+    print(f"[Voice] Jarvis: {reply}")
+    sm.on_reply_ready(reply)
+    audio_path = tts_engine.generate_audio(reply)
+    if audio_path and os.path.exists(audio_path):
+        print(f"[Voice] Reproduzindo resposta em voz alta ({audio_path})...")
+        stop_event.clear()
+        interrupted = play_audio_interruptible(audio_path, stop_event)
+        if interrupted:
+            print("[Voice] Fala interrompida via Esc.")
+            sm.on_interrupt()
+        else:
+            print("[Voice] Fala concluída. Microfone aberto para você continuar conversando...")
+            sm.on_speaking_finished()
+    else:
+        sm.on_speaking_finished()
 
 
 def test_microphone_sample(duration_seconds: float = 3.0) -> dict:
-    """Record a short sample from the default microphone, compute RMS volume, and test Vosk recognition."""
+    """Record a short sample from the default microphone, compute RMS volume, and test PT-BR speech recognition."""
     import sounddevice as sd
 
     block_size = 4000
@@ -544,19 +606,16 @@ def test_microphone_sample(duration_seconds: float = 3.0) -> dict:
             if rms > peak_rms:
                 peak_rms = rms
 
-    heard_text = ""
+    vosk_rec = None
     if os.path.isdir(DEFAULT_VOSK_MODEL_DIR):
         try:
             from vosk import KaldiRecognizer, Model
 
-            model = Model(DEFAULT_VOSK_MODEL_DIR)
-            rec = KaldiRecognizer(model, SAMPLE_RATE)
-            for c in chunks:
-                rec.AcceptWaveform(c)
-            heard_text = (json.loads(rec.FinalResult()).get("text") or "").strip()
-        except Exception as exc:
-            heard_text = f"(erro Vosk: {exc})"
+            vosk_rec = KaldiRecognizer(Model(DEFAULT_VOSK_MODEL_DIR), SAMPLE_RATE)
+        except Exception:
+            pass
 
+    heard_text = recognize_speech_ptbr(b"".join(chunks), vosk_rec)
     wake_detected = matches_wake_phrase(heard_text)
     has_signal = peak_rms >= 150.0
     return {

@@ -1132,7 +1132,7 @@ async def setup_save(payload: SetupSavePayload):
         agent_manager.agent = None
         agent_manager.message_count = 0
 
-    return {"ok": True, "message": "Tudo salvo! O Neo Assistente já está pronto para uso."}
+    return {"ok": True, "message": "Tudo salvo! O Jarvis Assistente já está pronto para uso."}
 
 
 @app.post("/setup/test-llm")
@@ -1281,7 +1281,7 @@ def setup_check_update():
             "message": (
                 f"Nova versão disponível ({remote_commit[:7]})!"
                 if update_available
-                else f"Seu Neo já está na versão mais recente ({local_commit[:7] or 'atual'})."
+                else f"Seu Jarvis já está na versão mais recente ({local_commit[:7] or 'atual'})."
             ),
         }
     except Exception as exc:
@@ -1340,7 +1340,7 @@ def setup_apply_update():
                 {
                     "stage": "installing",
                     "percent": 100,
-                    "message": "Download 100% concluído! Abrindo instalador automático na tela e reiniciando o Neo...",
+                    "message": "Download 100% concluído! Abrindo instalador automático na tela e reiniciando o Jarvis...",
                 }
             )
             print(f"[Updater] Download concluído em {target_exe}. Iniciando instalador /SILENT...")

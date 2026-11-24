@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Neo Assistente — Configuração Fácil</title>
+  <title>Jarvis Assistente — Configuração Fácil</title>
   <style>
     :root {
       --bg: #0b0f17;
@@ -115,7 +115,7 @@
   <main>
     <header style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
       <div>
-        <h1>Jarvis — Assistente por Voz (Neo)</h1>
+        <h1>Jarvis — Assistente por Voz</h1>
         <p>Configuração rápida em alto contraste. Depois de salvar, basta dizer <strong>"Jarvis"</strong> ou <strong>"Ei Jarvis"</strong>.</p>
       </div>
       <div>
@@ -129,7 +129,7 @@
     <!-- PASSO 1: GEMINI BYOK -->
     <section class="card" aria-labelledby="step1-title">
       <h2 id="step1-title">1. Chave gratuita do Gemini (BYOK)</h2>
-      <p>O Neo é gratuito e usa a sua própria chave do Google Gemini.</p>
+      <p>O Jarvis é gratuito e usa a sua própria chave do Google Gemini.</p>
       <div class="row" style="margin-bottom: 12px;">
         <a class="btn secondary" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
           Abrir Google AI Studio para criar chave
@@ -147,7 +147,7 @@
     <!-- PASSO 2: E-MAILS (GMAIL E OUTLOOK) -->
     <section class="card" aria-labelledby="step2-title">
       <h2 id="step2-title">2. Conectar E-mails (Gmail e Outlook)</h2>
-      <p>Adicione as contas que o Neo vai ler e responder quando você pedir por voz.</p>
+      <p>Adicione as contas que o Jarvis vai ler e responder quando você pedir por voz.</p>
 
       <div id="accountsList"></div>
 
@@ -218,19 +218,19 @@
     <!-- PASSO 4: WHATSAPP OPCIONAL -->
     <section class="card" aria-labelledby="step4-title">
       <h2 id="step4-title">4. WhatsApp por Voz (Opcional)</h2>
-      <p id="waText">Você também pode mandar áudios para o Neo pelo WhatsApp. Se não quiser agora, basta salvar abaixo.</p>
+      <p id="waText">Você também pode mandar áudios para o Jarvis pelo WhatsApp. Se não quiser agora, basta salvar abaixo.</p>
     </section>
 
     <!-- SALVAR -->
     <section class="card">
-      <button type="button" class="primary" onclick="saveAll()">Salvar e Ativar Neo Assistente</button>
+      <button type="button" class="primary" onclick="saveAll()">Salvar e Ativar Jarvis Assistente</button>
       <div id="saveStatus" class="status" role="status" aria-live="polite"></div>
     </section>
 
     <!-- MONITORAMENTO E LOGS -->
     <section class="card" aria-labelledby="logs-title">
       <h2 id="logs-title">Diagnóstico e Logs em Tempo Real</h2>
-      <p class="hint" id="diagSummary">Clique abaixo para ver o que o Neo está fazendo em segundo plano.</p>
+      <p class="hint" id="diagSummary">Clique abaixo para ver o que o Jarvis está fazendo em segundo plano.</p>
       <div class="row">
         <button type="button" class="secondary" onclick="loadLogs()">Atualizar Logs</button>
       </div>
@@ -373,7 +373,7 @@
         player.style.display = "block";
         player.src = url;
         await player.play();
-        showStatus("voiceStatus", true, "Reproduzindo a voz do Neo!");
+        showStatus("voiceStatus", true, "Reproduzindo a voz do Jarvis!");
       } catch (e) {
         showStatus("voiceStatus", false, "Não foi possível reproduzir o áudio: " + e.message);
       }
@@ -448,7 +448,7 @@
           banner.innerHTML = `${data.message} <button type="button" style="margin-left:12px; padding:8px 16px; font-size:17px;" onclick="installUpdateNow()">Atualizar em 1 clique</button>`;
         } else if (!silentCheck) {
           banner.className = "status ok";
-          banner.textContent = data.message || "Seu Neo já está atualizado.";
+          banner.textContent = data.message || "Seu Jarvis já está atualizado.";
         }
       } catch (e) {
         if (!silentCheck) {
@@ -478,7 +478,7 @@
           } catch (_) {
             // Backend closed to install new version — wait for new process to start and reload
             banner.className = "status ok";
-            banner.textContent = "Instalando nova versão e reiniciando o Neo... Esta janela atualizará sozinha.";
+            banner.textContent = "Instalando nova versão e reiniciando o Jarvis... Esta janela atualizará sozinha.";
             setTimeout(() => window.location.reload(), 6000);
           }
         }, 700);

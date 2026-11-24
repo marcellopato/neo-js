@@ -13,7 +13,7 @@ class TestSetupWizard(unittest.TestCase):
         resp = asyncio.run(agent.setup_page())
         self.assertEqual(resp.status_code, 200)
         body = resp.body.decode("utf-8")
-        self.assertIn("Neo", body)
+        self.assertIn("Jarvis", body)
         self.assertIn("GEMINI", body.upper())
         self.assertIn("Gmail", body)
         self.assertIn("Outlook", body)

@@ -43,7 +43,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install pyinstaller
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -c "import uvicorn, fastapi, google.generativeai, edge_tts, gtts, vosk, sounddevice, pygame, win32com.client; print('ALL_IMPORTS_OK')"
+          python -c "import uvicorn, fastapi, google.generativeai, edge_tts, gtts, speech_recognition, vosk, sounddevice, pygame, win32com.client; print('ALL_IMPORTS_OK')"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Download offline PT-BR Vosk wake-word model (~31 MB)
@@ -69,6 +69,7 @@ jobs:
             --collect-all vosk `
             --collect-all sounddevice `
             --collect-all edge_tts `
+            --collect-submodules speech_recognition `
             --collect-data certifi `
             --collect-data grpc `
             --collect-submodules uvicorn `
