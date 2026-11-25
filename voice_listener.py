@@ -463,8 +463,8 @@ def run_voice_loop(
                         utterance.append(raw)
                         if rms >= rms_threshold:
                             last_voice_t = now
-                        # End of utterance: 1.2s of silence or 14s max duration
-                        if (now - last_voice_t) >= 1.2 or (now - start_t) >= 14.0:
+                        # End of utterance: 0.9s of silence or 12s max duration
+                        if (now - last_voice_t) >= 0.9 or (now - start_t) >= 12.0:
                             pcm_data = b"".join(utterance)
                             utterance.clear()
                             speech_started = False
@@ -515,7 +515,7 @@ def run_voice_loop(
                         utt.append(raw)
                         if rms >= rms_threshold:
                             last_v = now
-                        if (now - last_v) >= 1.4 or (now - t0) >= 20.0:
+                        if (now - last_v) >= 0.95 or (now - t0) >= 18.0:
                             break
 
                 if not utt:
@@ -545,6 +545,39 @@ def run_voice_loop(
                 _handle_command_and_speak(transcript, backend_url, sm, stop_event)
 
 
+def _get_wait_ack_audio() -> str | None:
+    """Return a cached short spoken acknowledgement ('Só um instante.') to eliminate dead silence while thinking."""
+    cache_path = os.path.join(tts_engine.AUDIO_OUTPUT_DIR, "jarvis_wait_ack.mp3")
+    if os.path.exists(cache_path) and os.path.getsize(cache_path) > 256:
+        return cache_path
+    generated = tts_engine.generate_audio("Só um instante.")
+    if generated and os.path.exists(generated):
+        try:
+            import shutil
+
+            shutil.copyfile(generated, cache_path)
+            return cache_path
+        except Exception:
+            return generated
+    return None
+
+
+def _play_ack_nonblocking() -> None:
+    """Play 'Só um instante.' in the background while Gemini/email tools execute."""
+    try:
+        ack_path = _get_wait_ack_audio()
+        if not ack_path:
+            return
+        import pygame
+
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+        pygame.mixer.music.load(ack_path)
+        pygame.mixer.music.play()
+    except Exception:
+        pass
+
+
 def _handle_command_and_speak(
     transcript: str,
     backend_url: str,
@@ -553,6 +586,7 @@ def _handle_command_and_speak(
 ) -> None:
     try:
         print(f"[Voice] Você: {transcript}")
+        threading.Thread(target=_play_ack_nonblocking, daemon=True).start()
         reply = chat_with_text(transcript, backend_url=backend_url)
         if not reply:
             play_cue_async(sm.on_error("empty"))

@@ -84,6 +84,48 @@ class TestAssistantProfile(unittest.TestCase):
         )
         self.assertEqual(agent._extract_suggested_model(err), "gemini-3.8-flash")
 
+    @patch("agent.genai.GenerativeModel")
+    @patch("agent.genai.configure")
+    def test_sync_chat_preserves_thought_signature_on_function_calls(
+        self, _mock_cfg, _mock_model_cls
+    ):
+        neo = agent.NeoAgent(api_key="dummy-key", profile="assistant")
+        turn1_resp = {
+            "candidates": [
+                {
+                    "content": {
+                        "role": "model",
+                        "parts": [
+                            {
+                                "functionCall": {"name": "list_email_accounts", "args": {}},
+                                "thoughtSignature": "SIG_ABC_123",
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        turn2_resp = {
+            "candidates": [
+                {
+                    "content": {
+                        "role": "model",
+                        "parts": [{"text": "Você tem a conta Gmail configurada."}],
+                    }
+                }
+            ]
+        }
+        with patch.object(
+            neo, "_call_gemini_rest", side_effect=[turn1_resp, turn2_resp]
+        ):
+            reply = neo._sync_chat("Leia meus emails")
+            self.assertEqual(reply, "Você tem a conta Gmail configurada.")
+            # Verify the model turn stored in history preserved thoughtSignature verbatim
+            model_turn = neo.history[1]
+            self.assertEqual(
+                model_turn["parts"][0].get("thoughtSignature"), "SIG_ABC_123"
+            )
+
 
 class TestTTSEngine(unittest.TestCase):
     def test_sanitize_for_speech_removes_markdown_and_emojis(self):

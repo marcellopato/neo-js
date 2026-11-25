@@ -312,9 +312,51 @@ def get_tools_for_profile(profile: str | None = None) -> list:
     return tools
 
 
+def _build_rest_function_declarations(funcs: list) -> list[dict]:
+    """Convert Python tool functions into Gemini REST API functionDeclarations."""
+    import inspect
+
+    type_map = {str: "STRING", int: "INTEGER", float: "NUMBER", bool: "BOOLEAN"}
+    decls = []
+    for fn in funcs:
+        sig = inspect.signature(fn)
+        props = {}
+        required = []
+        for name, param in sig.parameters.items():
+            ann = param.annotation
+            if isinstance(ann, str):
+                ann_l = ann.lower()
+                gtype = (
+                    "BOOLEAN"
+                    if "bool" in ann_l
+                    else "INTEGER"
+                    if "int" in ann_l
+                    else "NUMBER"
+                    if "float" in ann_l
+                    else "STRING"
+                )
+            else:
+                gtype = type_map.get(ann, "STRING")
+            props[name] = {"type": gtype}
+            if param.default is inspect.Parameter.empty:
+                required.append(name)
+        entry: dict = {
+            "name": fn.__name__,
+            "description": (fn.__doc__ or fn.__name__).strip(),
+        }
+        if props:
+            entry["parameters"] = {
+                "type": "OBJECT",
+                "properties": props,
+                **({"required": required} if required else {}),
+            }
+        decls.append(entry)
+    return [{"functionDeclarations": decls}] if decls else []
+
+
 # ── NeoAgent ──────────────────────────────────────────────────────────────────
 class NeoAgent:
-    """Wraps the Google Generative AI SDK with tool-calling + security policies."""
+    """Gemini agent using direct REST JSON tool-calling (preserves thoughtSignature verbatim)."""
 
     def __init__(self, api_key: str | None = None, profile: str | None = None):
         self.profile = (profile or get_active_profile()).strip().lower()
@@ -322,23 +364,69 @@ class NeoAgent:
             self.profile = "dev"
 
         llm_cfg = get_llm_config(api_key=api_key)
-        effective_key = llm_cfg["gemini_api_key"]
-        model_name = llm_cfg["model_name"]
+        self.api_key = llm_cfg["gemini_api_key"]
+        self.model_name = llm_cfg["model_name"]
+        self.system_instruction = get_system_prompt(self.profile)
         tools = get_tools_for_profile(self.profile)
         self._allowed_tool_names = {fn.__name__ for fn in tools}
         self._tool_map = {fn.__name__: fn for fn in tools}
+        self._rest_tools = _build_rest_function_declarations(tools)
+        self.history: list[dict] = []
 
-        genai.configure(api_key=effective_key, transport="rest")
+        genai.configure(api_key=self.api_key, transport="rest")
         self.model = genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=get_system_prompt(self.profile),
+            model_name=self.model_name,
+            system_instruction=self.system_instruction,
             tools=tools,
         )
         self.chat = self.model.start_chat(history=[])
         print(
-            f"[NeoAgent] Initialized (profile={self.profile}, model={model_name}, "
-            f"api_key={'set' if effective_key else 'None'})"
+            f"[NeoAgent] Initialized (profile={self.profile}, model={self.model_name}, "
+            f"api_key={'set' if self.api_key else 'None'})"
         )
+
+    def _call_gemini_rest(self, contents: list[dict]) -> dict:
+        """Call Gemini generateContent REST API with automatic model fallback and raw JSON preservation."""
+        candidates = list(dict.fromkeys([self.model_name, *FALLBACK_GEMINI_MODELS]))
+        last_err = ""
+
+        while candidates:
+            candidate = candidates.pop(0)
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{candidate}:generateContent?key={self.api_key}"
+            )
+            payload: dict = {
+                "systemInstruction": {"parts": [{"text": self.system_instruction}]},
+                "contents": contents,
+            }
+            if self._rest_tools:
+                payload["tools"] = self._rest_tools
+
+            res = requests.post(url, json=payload, timeout=40)
+            if res.status_code == 200:
+                if candidate != self.model_name:
+                    print(f"[NeoAgent] Switched active model to {candidate}")
+                    self.model_name = candidate
+                    os.environ["NEO_GEMINI_MODEL"] = candidate
+                return res.json()
+
+            err_text = res.text
+            try:
+                err_text = res.json().get("error", {}).get("message", res.text)
+            except Exception:
+                pass
+            last_err = f"{res.status_code} {err_text}"
+            print(f"[NeoAgent] Model {candidate} returned {res.status_code}: {err_text[:180]}")
+
+            suggested = _extract_suggested_model(last_err)
+            if suggested and suggested not in candidates and suggested != candidate:
+                candidates.insert(0, suggested)
+
+            if res.status_code not in (404, 429, 500, 502, 503, 504):
+                break
+
+        raise RuntimeError(f"Gemini REST error: {last_err}")
 
     async def chat_send(self, message: str) -> str:
         """Send a message through the function-calling loop and return the final text."""
@@ -346,45 +434,49 @@ class NeoAgent:
         return await loop.run_in_executor(None, self._sync_chat, message)
 
     def _sync_chat(self, message: str) -> str:
-        """Synchronous function-calling loop with max-iteration guard."""
+        """Synchronous REST function-calling loop preserving thoughtSignature across tool turns."""
+        self.history.append({"role": "user", "parts": [{"text": message}]})
         max_turns = 8
-        for turn in range(max_turns):
-            response = self.chat.send_message(message)
 
-            if not response.candidates:
+        for _ in range(max_turns):
+            data = self._call_gemini_rest(self.history)
+            candidates = data.get("candidates") or []
+            if not candidates:
                 break
 
-            candidate = response.candidates[0]
-            if not candidate.content or not candidate.content.parts:
+            content = candidates[0].get("content") or {}
+            parts = content.get("parts") or []
+            if not parts:
                 break
 
-            part = candidate.content.parts[0]
+            # Append raw model content dict verbatim so thoughtSignature is never stripped
+            self.history.append({"role": content.get("role", "model"), "parts": parts})
 
-            # If the model returns text, we're done
-            if part.text:
-                return part.text
-
-            # If the model requests a function call
-            if part.function_call:
-                fc = part.function_call
-                fn_name = fc.name
-                fn_args = {k: v for k, v in fc.args.items()}
-                print(f"[NeoAgent] Function call: {fn_name}({fn_args})")
-
-                result = self._execute_function(fn_name, fn_args)
-
-                # Send result back and continue the loop
-                message = genai.protos.Part(
-                    function_response=genai.protos.FunctionResponse(
-                        name=fn_name,
-                        response={"result": result},
+            fn_calls = [p["functionCall"] for p in parts if "functionCall" in p]
+            if fn_calls:
+                fn_responses = []
+                for fc in fn_calls:
+                    fn_name = fc.get("name", "")
+                    fn_args = fc.get("args") or {}
+                    print(f"[NeoAgent] Function call: {fn_name}({fn_args})")
+                    result = self._execute_function(fn_name, fn_args)
+                    fn_responses.append(
+                        {
+                            "functionResponse": {
+                                "name": fn_name,
+                                "response": {"result": str(result)},
+                            }
+                        }
                     )
-                )
+                self.history.append({"role": "user", "parts": fn_responses})
                 continue
 
-            break  # Safety: empty part
+            text_chunks = [p["text"] for p in parts if "text" in p and not p.get("thought")]
+            if text_chunks:
+                return "".join(text_chunks).strip()
+            break
 
-        return "Desculpe, não consegui processar sua solicitação após várias tentativas. Pode reformular?"
+        return "Desculpe, não consegui processar sua solicitação agora. Pode repetir?"
 
     def _execute_function(self, fn_name: str, fn_args: dict) -> str:
         """Execute a tool function by name with args. Called by both sync and streaming paths."""
@@ -478,6 +570,7 @@ class NeoAgent:
 
     def clear_history(self):
         """Start a fresh chat session, discarding accumulated history."""
+        self.history = []
         self.chat = self.model.start_chat(history=[])
         print("[NeoAgent] History cleared.")
 
@@ -495,6 +588,7 @@ class NeoAgent:
                 "role": role,
                 "parts": [{"text": msg["content"]}]
             })
+        self.history = list(history_parts)
         self.chat = self.model.start_chat(history=history_parts)
         print(f"[NeoAgent] Loaded history: {len(stored_messages)} messages ({len(stored_messages)//2} turns)")
 
